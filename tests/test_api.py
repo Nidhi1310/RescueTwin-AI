@@ -36,3 +36,20 @@ def test_simulation_endpoint_returns_a_typed_json_result() -> None:
     assert isinstance(payload["severity_score"], float)
     assert len(payload["zone_impacts"]) == 10
     assert "lower elevations" in payload["explanation"]
+
+
+def test_prediction_endpoint_returns_severity_and_confidence() -> None:
+    response = client.post(
+        "/api/v1/predict",
+        json={
+            "rainfall_mm": 180.0,
+            "elevation_m": 72.0,
+            "drainage_score": 3,
+            "previous_water_level_m": 1.5,
+        },
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert 0 <= payload["predicted_flood_severity"] <= 100
+    assert payload["confidence"] in {"low", "medium", "high"}
