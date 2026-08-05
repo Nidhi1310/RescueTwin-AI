@@ -1,4 +1,16 @@
-# Python cache
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build
+dist/
+frontend/dist/
+
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -13,7 +25,3 @@ env/
 
 # Environment variables
 .env
-
-# OS files
-.DS_Store
-Thumbs.db
