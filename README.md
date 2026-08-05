@@ -44,3 +44,15 @@ This saves `backend/artifacts/flood_severity_xgb.joblib`. With the backend runni
 ```powershell
 Invoke-RestMethod -Method Post "http://127.0.0.1:8000/api/v1/predict" -ContentType "application/json" -Body '{"rainfall_mm":180,"elevation_m":72,"drainage_score":3,"previous_water_level_m":1.5}'
 ```
+
+## Run the frontend
+
+In a second terminal, with the backend already running on port 8000:
+
+```powershell
+cd frontend
+npm.cmd install
+npm.cmd run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies `/api` requests to the local backend.
