@@ -1,0 +1,615 @@
+From bbeced032925918770b2634cdd378924b46df077 Mon Sep 17 00:00:00 2001
+From: Nidhi1310 <nidhikumari15546@gmail.com>
+Date: Thu, 13 Aug 2026 10:39:28 +0530
+Subject: [PATCH] Day 6 routing
+
+---
+ backend/app/api/routes.py                     |  16 +++
+ backend/app/main.py                           |  13 ++
+ backend/app/models/routing.py                 |  17 +++
+ backend/app/services/routing_service.py       | 113 ++++++++++++++++++
+ docs/project-overview.md                      |   7 ++
+ frontend/src/App.tsx                          |   4 +-
+ frontend/src/api.ts                           |  22 +++-
+ frontend/src/components/OperationalMap.tsx    |  74 ++++++++++--
+ frontend/src/components/RoutingController.tsx |  89 ++++++++++++++
+ frontend/src/types.ts                         |   6 +
+ tests/test_routing.py                         |  70 +++++++++++
+ 11 files changed, 413 insertions(+), 18 deletions(-)
+ create mode 100644 backend/app/models/routing.py
+ create mode 100644 backend/app/services/routing_service.py
+ create mode 100644 frontend/src/components/RoutingController.tsx
+ create mode 100644 tests/test_routing.py
+
+diff --git a/backend/app/api/routes.py b/backend/app/api/routes.py
+index 7ec3f12..d929fe1 100644
+--- a/backend/app/api/routes.py
++++ b/backend/app/api/routes.py
+@@ -8,9 +8,11 @@ from pydantic import BaseModel
+ from app.models.district import DistrictProfile
+ from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
+ from app.models.simulation import FloodSimulationResult, RainfallScenario
++from app.models.routing import RouteResponse
+ from app.services.district_service import get_district
+ from app.services.flood_simulation import simulate_flood
+ from app.services.flood_prediction import get_prediction_service
++from app.services.routing_service import find_safe_route
+ 
+ router = APIRouter()
+ 
+@@ -41,6 +43,20 @@ def simulate(scenario: RainfallScenario = RainfallScenario.MODERATE) -> FloodSim
+     return simulate_flood(get_district(), scenario)
+ 
+ 
++@router.get("/route", response_model=RouteResponse, tags=["routing"])
++def calculate_route(start_id: str, end_id: str, scenario: RainfallScenario = RainfallScenario.MODERATE) -> RouteResponse:
++    """Calculate the safest route avoiding roads blocked by the given scenario."""
++    sim_result = simulate_flood(get_district(), scenario)
++    blocked_ids = {road.road_id for road in sim_result.blocked_roads}
++    
++    path_coords, distance = find_safe_route(start_id, end_id, blocked_ids)
++    
++    if not path_coords:
++        return RouteResponse(status="no_route_available", distance_km=0.0, path=[])
++        
++    return RouteResponse(status="success", distance_km=round(distance, 2), path=path_coords)
++
++
+ @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
+ def predict_flood_severity(request: FloodPredictionRequest) -> FloodPredictionResponse:
+     """Predict flood severity using the persisted XGBoost baseline artifact."""
+diff --git a/backend/app/main.py b/backend/app/main.py
+index 5d9ed40..0e1abfe 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -1,12 +1,25 @@
+ """FastAPI application entry point for RescueTwin AI."""
+ 
++from contextlib import asynccontextmanager
++
+ from fastapi import FastAPI
+ 
+ from app.api.routes import router
++from app.services.district_service import get_district
++from app.services.routing_service import build_routing_graph
++
++
++@asynccontextmanager
++async def lifespan(app: FastAPI):
++    """Build the routing graph in-memory on startup."""
++    build_routing_graph(get_district())
++    yield
++
+ 
+ app = FastAPI(
+     title="RescueTwin AI API",
+     version="0.1.0",
+     description="Fictional flood-response decision-support backend.",
++    lifespan=lifespan,
+ )
+ app.include_router(router, prefix="/api/v1")
+diff --git a/backend/app/models/routing.py b/backend/app/models/routing.py
+new file mode 100644
+index 0000000..a37d32d
+--- /dev/null
++++ b/backend/app/models/routing.py
+@@ -0,0 +1,17 @@
++"""Routing API models."""
++
++from __future__ import annotations
++
++from typing import Literal
++
++from pydantic import BaseModel
++
++from .entities import GeoPoint
++
++
++class RouteResponse(BaseModel):
++    """Result of a safe route computation."""
++
++    status: Literal["success", "no_route_available"]
++    distance_km: float
++    path: list[GeoPoint]
+diff --git a/backend/app/services/routing_service.py b/backend/app/services/routing_service.py
+new file mode 100644
+index 0000000..f977098
+--- /dev/null
++++ b/backend/app/services/routing_service.py
+@@ -0,0 +1,113 @@
++"""Routing engine for calculating safe paths in the district."""
++
++import heapq
++from collections import defaultdict
++
++from app.models.district import DistrictProfile
++from app.models.entities import GeoPoint
++
++
++# Global state for the routing graph (built once on startup)
++_road_graph: dict[str, dict[str, dict]] = defaultdict(dict)
++_locations: dict[str, GeoPoint] = {}
++
++
++def build_routing_graph(district: DistrictProfile) -> None:
++    """Build the static routing graph from the district profile."""
++    _road_graph.clear()
++    _locations.clear()
++
++    # Add all entities to locations
++    for zone in district.zones:
++        _locations[zone.id] = zone.center
++    
++    for facility in district.hospitals + district.shelters:
++        _locations[facility.id] = facility.location
++        # Zero-distance link between facility and its home zone
++        _road_graph[facility.id][facility.zone_id] = {"length_km": 0.0, "road_id": None}
++        _road_graph[facility.zone_id][facility.id] = {"length_km": 0.0, "road_id": None}
++
++    for team in district.rescue_teams:
++        _locations[team.id] = team.location
++        # Zero-distance link between team and its home zone
++        _road_graph[team.id][team.home_zone_id] = {"length_km": 0.0, "road_id": None}
++        _road_graph[team.home_zone_id][team.id] = {"length_km": 0.0, "road_id": None}
++
++    # Add roads as bidirectional edges
++    for road in district.roads:
++        _road_graph[road.from_zone_id][road.to_zone_id] = {
++            "length_km": road.length_km,
++            "road_id": road.id,
++            "geometry": road.geometry,
++        }
++        _road_graph[road.to_zone_id][road.from_zone_id] = {
++            "length_km": road.length_km,
++            "road_id": road.id,
++            "geometry": tuple(reversed(road.geometry)),
++        }
++
++
++def find_safe_route(
++    start_id: str, end_id: str, blocked_road_ids: set[str]
++) -> tuple[list[GeoPoint], float]:
++    """Find the shortest path avoiding blocked roads."""
++    if start_id not in _locations or end_id not in _locations:
++        return [], 0.0
++
++    distances = {node: float("inf") for node in _locations}
++    distances[start_id] = 0.0
++    previous: dict[str, str | None] = {node: None for node in _locations}
++
++    pq: list[tuple[float, str]] = [(0.0, start_id)]
++
++    while pq:
++        current_distance, current_node = heapq.heappop(pq)
++
++        if current_distance > distances[current_node]:
++            continue
++
++        if current_node == end_id:
++            break
++
++        for neighbor, edge_data in _road_graph[current_node].items():
++            if edge_data["road_id"] in blocked_road_ids:
++                continue
++
++            distance = current_distance + edge_data["length_km"]
++
++            if distance < distances[neighbor]:
++                distances[neighbor] = distance
++                previous[neighbor] = current_node
++                heapq.heappush(pq, (distance, neighbor))
++
++    if distances[end_id] == float("inf"):
++        return [], 0.0
++
++    # Reconstruct path nodes
++    path_nodes = []
++    current: str | None = end_id
++    while current is not None:
++        path_nodes.append(current)
++        current = previous[current]
++    path_nodes.reverse()
++
++    # Reconstruct exact geometry along the path
++    path_coords = []
++    for i in range(len(path_nodes) - 1):
++        u = path_nodes[i]
++        v = path_nodes[i + 1]
++        edge = _road_graph[u][v]
++
++        if edge["road_id"] is None:
++            # Facility/Team to zone virtual edge
++            if not path_coords:
++                path_coords.append(_locations[u])
++            path_coords.append(_locations[v])
++        else:
++            geom = list(edge["geometry"])
++            if not path_coords:
++                path_coords.extend(geom)
++            else:
++                path_coords.extend(geom[1:])
++
++    return path_coords, distances[end_id]
+diff --git a/docs/project-overview.md b/docs/project-overview.md
+index 6a42dc5..b4cfe93 100644
+--- a/docs/project-overview.md
++++ b/docs/project-overview.md
+@@ -21,6 +21,13 @@ It is not a real emergency system. It is a demo project that shows how AI can he
+ 
+ The user selects a flood scenario like moderate, severe, or extreme. The system then updates the map and shows which areas are affected. After that, it gives rescue recommendations based on safety, distance, and availability.
+ 
++### Routing Architecture
++
++RescueTwin AI uses a backend-driven routing architecture:
++- **Graph Initialization**: The district road network is parsed into an adjacency list in memory exactly once during FastAPI startup.
++- **Dynamic Costing**: When a user queries a route, the routing engine queries the active scenario's flood simulation. Roads marked as blocked are dynamically treated as impassable during that specific pathfinding request.
++- **Separation of Concerns**: The frontend remains purely a visual layer. It requests a route via `GET /api/v1/route?start_id={start}&end_id={end}&scenario={scenario}` and renders the returned coordinate path. It does not perform pathfinding or track blocked road state for routing.
++
+ ## Why this project is useful
+ 
+ This project is good for an AI/ML portfolio because it shows:
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 2ed0e16..628ec9d 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -1,7 +1,7 @@
+ import { useEffect, useState } from "react";
+ 
+ import { fetchDistrict } from "./api";
+-import { OperationalMap } from "./components/OperationalMap";
++import { RoutingController } from "./components/RoutingController";
+ import type { DistrictProfile } from "./types";
+ 
+ function LoadingState() {
+@@ -40,7 +40,7 @@ export default function App() {
+           {[['Flood zones', district.zones.length], ['Residents', totalPopulation.toLocaleString()], ['Care facilities', district.hospitals.length + district.shelters.length], ['Rescue teams', district.rescue_teams.length]].map(([label, value]) => <article key={String(label)} className="rounded-xl border border-line bg-panel p-4"><p className="text-xs uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-white">{value}</p></article>)}
+         </section>
+         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+-          <OperationalMap zones={district.zones} hospitals={district.hospitals} shelters={district.shelters} rescueTeams={district.rescue_teams} />
++          <RoutingController district={district} />
+           <aside className="space-y-4"><section className="rounded-2xl border border-line bg-panel p-5 shadow-panel"><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Facilities</p><div className="mt-4 space-y-3">{[...district.hospitals, ...district.shelters].map((facility) => <div key={facility.id} className="border-b border-line pb-3 last:border-0 last:pb-0"><div className="flex items-center justify-between gap-2"><p className="text-sm font-medium text-white">{facility.name}</p><span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-300">{facility.type}</span></div><p className="mt-1 text-xs text-slate-500">{facility.current_occupancy} / {facility.capacity} occupied</p></div>)}</div></section><section className="rounded-2xl border border-line bg-panel p-5 shadow-panel"><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Teams</p><div className="mt-4 space-y-3">{district.rescue_teams.map((team) => <div key={team.id} className="flex justify-between gap-3"><div><p className="text-sm font-medium text-white">{team.name}</p><p className="mt-1 text-xs text-slate-500">{team.personnel_count} personnel · {team.specialties[0]}</p></div><span className="h-fit rounded bg-rescue/10 px-2 py-1 text-[10px] font-semibold uppercase text-rescue">{team.status}</span></div>)}</div></section></aside>
+         </div>
+       </div>
+diff --git a/frontend/src/api.ts b/frontend/src/api.ts
+index d758606..daddadd 100644
+--- a/frontend/src/api.ts
++++ b/frontend/src/api.ts
+@@ -1,11 +1,23 @@
+-import type { DistrictProfile } from "./types";
+-
+-const DISTRICT_ENDPOINT = "/api/v1/district";
++import type { DistrictProfile, FloodSimulationResult, RainfallScenario, RouteResponse } from "./types";
+ 
+ export async function fetchDistrict(): Promise<DistrictProfile> {
+-  const response = await fetch(DISTRICT_ENDPOINT);
++  const response = await fetch("/api/v1/district");
+   if (!response.ok) {
+-    throw new Error(`District data request failed (${response.status}).`);
++    throw new Error(`District request failed (${response.status}).`);
+   }
+   return (await response.json()) as DistrictProfile;
+ }
++
++export async function fetchSimulation(scenario: RainfallScenario): Promise<FloodSimulationResult> {
++  const response = await fetch(`/api/v1/simulate?scenario=${scenario}`);
++  if (!response.ok) {
++    throw new Error(`Flood simulation request failed (${response.status}).`);
++  }
++  return (await response.json()) as FloodSimulationResult;
++}
++
++export async function fetchRoute(startId: string, endId: string, scenario: string): Promise<RouteResponse> {
++  const response = await fetch(`/api/v1/route?start_id=${startId}&end_id=${endId}&scenario=${scenario}`);
++  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
++  return response.json();
++}
+diff --git a/frontend/src/components/OperationalMap.tsx b/frontend/src/components/OperationalMap.tsx
+index c741159..46df9ee 100644
+--- a/frontend/src/components/OperationalMap.tsx
++++ b/frontend/src/components/OperationalMap.tsx
+@@ -1,10 +1,14 @@
+-import type { Facility, FloodZone, GeoPoint, RescueTeam } from "../types";
++import type { Facility, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
+ 
+ interface OperationalMapProps {
+   zones: FloodZone[];
+   hospitals: Facility[];
+   shelters: Facility[];
+   rescueTeams: RescueTeam[];
++  route?: RouteResponse | null;
++  startId?: string | null;
++  endId?: string | null;
++  onEntityClick?: (id: string) => void;
+ }
+ 
+ interface Bounds {
+@@ -29,19 +33,53 @@ function positionFor(point: GeoPoint, bounds: Bounds): { left: string; top: stri
+   return { left: `${10 + horizontal * 80}%`, top: `${9 + vertical * 82}%` };
+ }
+ 
+-function Marker({ symbol, label, point, bounds, className }: { symbol: string; label: string; point: GeoPoint; bounds: Bounds; className: string }) {
++function Marker({ id, symbol, label, point, bounds, className, isSelected, onClick }: { id: string; symbol: string; label: string; point: GeoPoint; bounds: Bounds; className: string; isSelected?: boolean; onClick?: (id: string) => void }) {
+   return (
+-    <div className="absolute -translate-x-1/2 -translate-y-1/2 group" style={positionFor(point, bounds)}>
+-      <div className={`grid h-7 w-7 place-items-center rounded-full border-2 border-ink text-xs font-black shadow-lg ${className}`}>{symbol}</div>
++    <div 
++      className={`absolute -translate-x-1/2 -translate-y-1/2 group ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${isSelected ? 'scale-125 z-30' : ''}`} 
++      style={positionFor(point, bounds)}
++      onClick={() => onClick?.(id)}
++    >
++      <div className={`grid h-7 w-7 place-items-center rounded-full border-2 ${isSelected ? 'border-white animate-pulse' : 'border-ink'} text-xs font-black shadow-lg ${className}`}>{symbol}</div>
+       <div className="pointer-events-none absolute left-1/2 top-8 z-20 hidden w-max max-w-44 -translate-x-1/2 rounded bg-ink px-2 py-1 text-[10px] font-medium text-slate-100 shadow-xl group-hover:block">{label}</div>
+     </div>
+   );
+ }
+ 
+-export function OperationalMap({ zones, hospitals, shelters, rescueTeams }: OperationalMapProps) {
++export function OperationalMap({ zones, hospitals, shelters, rescueTeams, route, startId, endId, onEntityClick }: OperationalMapProps) {
+   const allPoints = [...zones.map((zone) => zone.center), ...hospitals.map((facility) => facility.location), ...shelters.map((facility) => facility.location), ...rescueTeams.map((team) => team.location)];
+   const bounds = boundsFor(allPoints);
+ 
++  const renderRouteLine = () => {
++    if (!route || route.status !== "success" || route.path.length < 2) return null;
++    
++    const points = route.path.map(p => {
++      const pos = positionFor(p, bounds);
++      return `${parseFloat(pos.left)},${parseFloat(pos.top)}`;
++    }).join(' ');
++
++    return (
++      <svg className="absolute inset-0 h-full w-full pointer-events-none z-10" style={{ overflow: 'visible' }}>
++        <polyline 
++          points={points} 
++          fill="none" 
++          stroke="url(#routeGradient)" 
++          strokeWidth="4" 
++          strokeDasharray="8 6" 
++          className="animate-[dash_1s_linear_infinite]"
++          strokeLinecap="round" 
++          strokeLinejoin="round" 
++        />
++        <defs>
++          <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
++            <stop offset="0%" stopColor="#34d399" />
++            <stop offset="100%" stopColor="#60a5fa" />
++          </linearGradient>
++        </defs>
++      </svg>
++    );
++  };
++
+   return (
+     <section className="relative min-h-[520px] overflow-hidden rounded-2xl border border-line bg-[#0d1b2a] shadow-panel">
+       <div className="absolute inset-0 opacity-40 map-grid" />
+@@ -55,23 +93,37 @@ export function OperationalMap({ zones, hospitals, shelters, rescueTeams }: Oper
+         <div className="rounded-lg border border-white/10 bg-ink/70 px-3 py-2 text-xs text-slate-300">Static district data</div>
+       </div>
+       <div className="absolute inset-0 pt-16">
++        {renderRouteLine()}
+         {zones.map((zone) => (
+-          <div key={zone.id} className="absolute -translate-x-1/2 -translate-y-1/2" style={positionFor(zone.center, bounds)}>
+-            <div className="grid h-14 w-14 place-items-center rounded-full border border-water/50 bg-water/15 text-center text-[10px] font-semibold leading-tight text-sky-100 shadow-lg backdrop-blur-sm">
++          <div 
++            key={zone.id} 
++            className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 ${onEntityClick ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`} 
++            style={positionFor(zone.center, bounds)}
++            onClick={() => onEntityClick?.(zone.id)}
++          >
++            <div className={`grid h-14 w-14 place-items-center rounded-full border ${startId === zone.id || endId === zone.id ? 'border-white bg-water/40 shadow-[0_0_15px_rgba(56,189,248,0.5)]' : 'border-water/50 bg-water/15'} text-center text-[10px] font-semibold leading-tight text-sky-100 shadow-lg backdrop-blur-sm`}>
+               {zone.name}
+             </div>
+           </div>
+         ))}
+-        {hospitals.map((facility) => <Marker key={facility.id} symbol="+" label={facility.name} point={facility.location} bounds={bounds} className="bg-rose-400 text-rose-950" />)}
+-        {shelters.map((facility) => <Marker key={facility.id} symbol="⌂" label={facility.name} point={facility.location} bounds={bounds} className="bg-amber-300 text-amber-950" />)}
+-        {rescueTeams.map((team) => <Marker key={team.id} symbol="◆" label={`${team.name} · ${team.status}`} point={team.location} bounds={bounds} className="bg-rescue text-emerald-950" />)}
++        {hospitals.map((facility) => <Marker key={facility.id} id={facility.id} symbol="+" label={facility.name} point={facility.location} bounds={bounds} className="bg-rose-400 text-rose-950" isSelected={startId === facility.id || endId === facility.id} onClick={onEntityClick} />)}
++        {shelters.map((facility) => <Marker key={facility.id} id={facility.id} symbol="⌂" label={facility.name} point={facility.location} bounds={bounds} className="bg-amber-300 text-amber-950" isSelected={startId === facility.id || endId === facility.id} onClick={onEntityClick} />)}
++        {rescueTeams.map((team) => <Marker key={team.id} id={team.id} symbol="◆" label={`${team.name} · ${team.status}`} point={team.location} bounds={bounds} className="bg-rescue text-emerald-950" isSelected={startId === team.id || endId === team.id} onClick={onEntityClick} />)}
+       </div>
+-      <div className="absolute bottom-5 left-5 z-10 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-ink/75 px-3 py-2 text-xs text-slate-200 backdrop-blur">
++      <div className="absolute bottom-5 left-5 z-20 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-ink/75 px-3 py-2 text-xs text-slate-200 backdrop-blur">
+         <span><b className="mr-1 text-water">●</b>Zone</span>
+         <span><b className="mr-1 text-rose-400">●</b>Hospital</span>
+         <span><b className="mr-1 text-amber-300">●</b>Shelter</span>
+         <span><b className="mr-1 text-rescue">●</b>Rescue team</span>
+       </div>
++      
++      <style>{`
++        @keyframes dash {
++          to {
++            stroke-dashoffset: -14;
++          }
++        }
++      `}</style>
+     </section>
+   );
+ }
+diff --git a/frontend/src/components/RoutingController.tsx b/frontend/src/components/RoutingController.tsx
+new file mode 100644
+index 0000000..ec1a768
+--- /dev/null
++++ b/frontend/src/components/RoutingController.tsx
+@@ -0,0 +1,89 @@
++import { useEffect, useState } from "react";
++import { fetchRoute } from "../api";
++import type { DistrictProfile, RouteResponse } from "../types";
++import { OperationalMap } from "./OperationalMap";
++
++interface RoutingControllerProps {
++  district: DistrictProfile;
++}
++
++export function RoutingController({ district }: RoutingControllerProps) {
++  const [startId, setStartId] = useState<string | null>(null);
++  const [endId, setEndId] = useState<string | null>(null);
++  const [route, setRoute] = useState<RouteResponse | null>(null);
++  const scenario = "moderate"; // Default scenario for now until UI switcher is added
++
++  useEffect(() => {
++    if (startId && endId) {
++      fetchRoute(startId, endId, scenario).then(setRoute).catch(console.error);
++    } else {
++      setRoute(null);
++    }
++  }, [startId, endId, scenario]);
++
++  const handleEntityClick = (id: string) => {
++    if (!startId) {
++      setStartId(id);
++    } else if (!endId && id !== startId) {
++      setEndId(id);
++    } else {
++      setStartId(id);
++      setEndId(null);
++    }
++  };
++
++  const resetRouting = () => {
++    setStartId(null);
++    setEndId(null);
++  };
++
++  return (
++    <div className="relative">
++      <OperationalMap 
++        zones={district.zones}
++        hospitals={district.hospitals}
++        shelters={district.shelters}
++        rescueTeams={district.rescue_teams}
++        route={route} 
++        startId={startId}
++        endId={endId}
++        onEntityClick={handleEntityClick} 
++      />
++      
++      {(startId || endId) && (
++        <div className="absolute top-5 right-5 z-[500] w-72 rounded-xl border border-slate-700 bg-ink/95 p-4 shadow-xl backdrop-blur">
++          <div className="mb-3 flex items-center justify-between">
++             <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-water">Safe Routing</h3>
++             <button type="button" onClick={resetRouting} className="text-[11px] font-semibold text-slate-400 hover:text-white transition">CLEAR</button>
++          </div>
++          
++          <div className="space-y-2 text-sm">
++            <div className="flex items-center gap-2">
++              <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
++              <span className="text-slate-300">Start:</span>
++              <span className="truncate font-medium text-white">{startId || "Select point on map"}</span>
++            </div>
++            <div className="flex items-center gap-2">
++              <span className="h-2 w-2 rounded-full bg-blue-400"></span>
++              <span className="text-slate-300">End:</span>
++              <span className="truncate font-medium text-white">{endId || "Select point on map"}</span>
++            </div>
++          </div>
++
++          {route && (
++            <div className="mt-4 border-t border-slate-700 pt-3">
++              {route.status === "success" ? (
++                <div>
++                  <p className="text-sm font-semibold text-emerald-400">Safe route found</p>
++                  <p className="mt-1 text-xs text-slate-300">Distance: {route.distance_km} km</p>
++                </div>
++              ) : (
++                <p className="text-sm font-semibold text-rose-400">No safe route available</p>
++              )}
++            </div>
++          )}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/types.ts b/frontend/src/types.ts
+index 0b2e254..bf2c73b 100644
+--- a/frontend/src/types.ts
++++ b/frontend/src/types.ts
+@@ -49,3 +49,9 @@ export interface DistrictProfile {
+   shelters: Facility[];
+   rescue_teams: RescueTeam[];
+ }
++
++export interface RouteResponse {
++  status: "success" | "no_route_available";
++  distance_km: number;
++  path: GeoPoint[];
++}
+diff --git a/tests/test_routing.py b/tests/test_routing.py
+new file mode 100644
+index 0000000..c36d556
+--- /dev/null
++++ b/tests/test_routing.py
+@@ -0,0 +1,70 @@
++"""Tests for the routing engine."""
++
++from fastapi.testclient import TestClient
++
++from app.main import app
++from app.services.district_service import get_district
++from app.services.routing_service import build_routing_graph, find_safe_route
++
++
++def test_build_routing_graph():
++    """Verify the routing graph initializes properly."""
++    district = get_district()
++    build_routing_graph(district)
++    
++    # Internal state check to ensure nodes are populated
++    from app.services.routing_service import _road_graph, _locations
++    assert len(_road_graph) > 0
++    assert len(_locations) > 0
++    assert district.zones[0].id in _locations
++
++
++def test_find_safe_route_clear_path():
++    """Verify route computation without blocked roads."""
++    district = get_district()
++    build_routing_graph(district)
++    
++    start_zone = district.zones[0].id
++    end_zone = district.zones[-1].id
++    
++    path, dist = find_safe_route(start_zone, end_zone, blocked_road_ids=set())
++    
++    assert dist > 0.0
++    assert len(path) >= 2
++
++
++def test_find_safe_route_blocked_path():
++    """Verify route computation respects blocked roads."""
++    district = get_district()
++    build_routing_graph(district)
++    
++    start_zone = district.zones[0].id
++    end_zone = district.zones[-1].id
++    
++    # First find a clear route to identify an edge we can block
++    clear_path, clear_dist = find_safe_route(start_zone, end_zone, set())
++    assert clear_dist > 0
++    
++    # Block all roads to force no route available
++    all_road_ids = {road.id for road in district.roads}
++    blocked_path, blocked_dist = find_safe_route(start_zone, end_zone, all_road_ids)
++    
++    assert blocked_dist == 0.0
++    assert len(blocked_path) == 0
++
++
++def test_integration_simulate_to_routing():
++    """End-to-end test verifying Simulation -> Blocked Roads -> Routing."""
++    district = get_district()
++    build_routing_graph(district)
++    
++    with TestClient(app) as client:
++        # We know team-01 and shelter-01 exist from static data
++        response = client.get("/api/v1/route?start_id=team-01&end_id=shelter-01&scenario=extreme")
++        assert response.status_code == 200
++        
++        data = response.json()
++        assert "status" in data
++        assert data["status"] in ("success", "no_route_available")
++        assert "distance_km" in data
++        assert "path" in data
+-- 
+2.55.0.windows.3
+

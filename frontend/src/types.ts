@@ -49,3 +49,9 @@ export interface DistrictProfile {
   shelters: Facility[];
   rescue_teams: RescueTeam[];
 }
+
+export interface RouteResponse {
+  status: "success" | "no_route_available";
+  distance_km: number;
+  path: GeoPoint[];
+}

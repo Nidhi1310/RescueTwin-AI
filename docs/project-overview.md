@@ -21,6 +21,13 @@ It is not a real emergency system. It is a demo project that shows how AI can he
 
 The user selects a flood scenario like moderate, severe, or extreme. The system then updates the map and shows which areas are affected. After that, it gives rescue recommendations based on safety, distance, and availability.
 
+### Routing Architecture
+
+RescueTwin AI uses a backend-driven routing architecture:
+- **Graph Initialization**: The district road network is parsed into an adjacency list in memory exactly once during FastAPI startup.
+- **Dynamic Costing**: When a user queries a route, the routing engine queries the active scenario's flood simulation. Roads marked as blocked are dynamically treated as impassable during that specific pathfinding request.
+- **Separation of Concerns**: The frontend remains purely a visual layer. It requests a route via `GET /api/v1/route?start_id={start}&end_id={end}&scenario={scenario}` and renders the returned coordinate path. It does not perform pathfinding or track blocked road state for routing.
+
 ## Why this project is useful
 
 This project is good for an AI/ML portfolio because it shows:
