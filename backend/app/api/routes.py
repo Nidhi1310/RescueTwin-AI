@@ -2,15 +2,17 @@
 
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.models.damage_assessment import DamageAssessmentResponse
 from app.models.district import DistrictProfile
 from app.models.hospital_recommendation import HospitalRecommendationResponse
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
 from app.models.simulation import FloodSimulationResult, RainfallScenario
 from app.models.routing import RouteResponse
 from app.models.team_allocation import TeamAllocationResponse
+from app.services.damage_assessment import assess_image_damage
 from app.services.district_service import get_district
 from app.services.flood_simulation import simulate_flood
 from app.services.flood_prediction import get_prediction_service
@@ -87,3 +89,16 @@ def predict_flood_severity(request: FloodPredictionRequest) -> FloodPredictionRe
     """Predict flood severity using the persisted XGBoost baseline artifact."""
 
     return get_prediction_service().predict(request)
+
+
+@router.post("/assess-damage", response_model=DamageAssessmentResponse, tags=["damage"])
+async def evaluate_incident_image(file: UploadFile = File(...)) -> DamageAssessmentResponse:
+    """Assess incident imagery and classify flood damage deterministically."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename not provided.")
+        
+    try:
+        content = await file.read()
+        return assess_image_damage(content, file.filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
