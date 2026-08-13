@@ -10,11 +10,13 @@ from app.models.hospital_recommendation import HospitalRecommendationResponse
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
 from app.models.simulation import FloodSimulationResult, RainfallScenario
 from app.models.routing import RouteResponse
+from app.models.team_allocation import TeamAllocationResponse
 from app.services.district_service import get_district
 from app.services.flood_simulation import simulate_flood
 from app.services.flood_prediction import get_prediction_service
 from app.services.hospital_recommendation import recommend_hospital
 from app.services.routing_service import find_safe_route
+from app.services.team_allocation import allocate_team
 
 router = APIRouter()
 
@@ -67,6 +69,17 @@ def recommend_hospital_for_incident(
     """Recommend the most suitable hospital reachable from the specified origin."""
 
     return recommend_hospital(get_district(), start_id, scenario)
+
+
+@router.get("/recommendations/team", response_model=TeamAllocationResponse, tags=["recommendations"])
+def recommend_team_for_incident(
+    incident_zone_id: str,
+    scenario: RainfallScenario = RainfallScenario.MODERATE,
+    required_specialty: str | None = None,
+) -> TeamAllocationResponse:
+    """Allocate the most suitable available rescue team for an incident."""
+
+    return allocate_team(get_district(), incident_zone_id, scenario, required_specialty)
 
 
 @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
