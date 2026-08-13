@@ -6,12 +6,14 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.models.district import DistrictProfile
+from app.models.hospital_recommendation import HospitalRecommendationResponse
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
 from app.models.simulation import FloodSimulationResult, RainfallScenario
 from app.models.routing import RouteResponse
 from app.services.district_service import get_district
 from app.services.flood_simulation import simulate_flood
 from app.services.flood_prediction import get_prediction_service
+from app.services.hospital_recommendation import recommend_hospital
 from app.services.routing_service import find_safe_route
 
 router = APIRouter()
@@ -55,6 +57,16 @@ def calculate_route(start_id: str, end_id: str, scenario: RainfallScenario = Rai
         return RouteResponse(status="no_route_available", distance_km=0.0, path=[])
         
     return RouteResponse(status="success", distance_km=round(distance, 2), path=path_coords)
+
+
+@router.get("/recommendations/hospital", response_model=HospitalRecommendationResponse, tags=["recommendations"])
+def recommend_hospital_for_incident(
+    start_id: str,
+    scenario: RainfallScenario = RainfallScenario.MODERATE,
+) -> HospitalRecommendationResponse:
+    """Recommend the most suitable hospital reachable from the specified origin."""
+
+    return recommend_hospital(get_district(), start_id, scenario)
 
 
 @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
