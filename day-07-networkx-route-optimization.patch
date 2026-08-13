@@ -1,0 +1,408 @@
+diff --git a/backend/app/api/routes.py b/backend/app/api/routes.py
+index d929fe1..de44931 100644
+--- a/backend/app/api/routes.py
++++ b/backend/app/api/routes.py
+@@ -49,12 +49,33 @@ def calculate_route(start_id: str, end_id: str, scenario: RainfallScenario = Rai
+     sim_result = simulate_flood(get_district(), scenario)
+     blocked_ids = {road.road_id for road in sim_result.blocked_roads}
+     
+-    path_coords, distance = find_safe_route(start_id, end_id, blocked_ids)
+-    
+-    if not path_coords:
+-        return RouteResponse(status="no_route_available", distance_km=0.0, path=[])
+-        
+-    return RouteResponse(status="success", distance_km=round(distance, 2), path=path_coords)
++    route = find_safe_route(start_id, end_id, blocked_ids)
++    excluded_road_ids = sorted(blocked_ids)
++
++    if route is None:
++        return RouteResponse(
++            status="no_route_available",
++            distance_km=0.0,
++            estimated_travel_time_minutes=0.0,
++            path=[],
++            excluded_road_ids=excluded_road_ids,
++            explanation=(
++                f"No safe route is available from {start_id} to {end_id} after excluding "
++                f"{len(excluded_road_ids)} flood-blocked roads for the {scenario.value} scenario."
++            ),
++        )
++
++    return RouteResponse(
++        status="success",
++        distance_km=route.distance_km,
++        estimated_travel_time_minutes=route.estimated_travel_time_minutes,
++        path=list(route.path),
++        excluded_road_ids=excluded_road_ids,
++        explanation=(
++            f"Selected the shortest safe route from {start_id} to {end_id}, avoiding "
++            f"{len(excluded_road_ids)} flood-blocked roads in the {scenario.value} scenario."
++        ),
++    )
+ 
+ 
+ @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
+diff --git a/backend/app/models/routing.py b/backend/app/models/routing.py
+index a37d32d..def5250 100644
+--- a/backend/app/models/routing.py
++++ b/backend/app/models/routing.py
+@@ -1,17 +1,20 @@
+-"""Routing API models."""
++"""Typed route-planning API contracts."""
+ 
+ from __future__ import annotations
+ 
+ from typing import Literal
+ 
+-from pydantic import BaseModel
++from pydantic import BaseModel, Field
+ 
+ from .entities import GeoPoint
+ 
+ 
+ class RouteResponse(BaseModel):
+-    """Result of a safe route computation."""
++    """Result of a shortest safe route calculation."""
+ 
+     status: Literal["success", "no_route_available"]
+-    distance_km: float
++    distance_km: float = Field(ge=0)
++    estimated_travel_time_minutes: float = Field(ge=0)
+     path: list[GeoPoint]
++    excluded_road_ids: list[str]
++    explanation: str
+diff --git a/backend/app/services/routing_service.py b/backend/app/services/routing_service.py
+index f977098..a3e96fe 100644
+--- a/backend/app/services/routing_service.py
++++ b/backend/app/services/routing_service.py
+@@ -1,14 +1,30 @@
+-"""Routing engine for calculating safe paths in the district."""
++"""NetworkX-based safe routing over the fictional district road network."""
+ 
+-import heapq
+-from collections import defaultdict
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++import networkx as nx
+ 
+ from app.models.district import DistrictProfile
+ from app.models.entities import GeoPoint
+ 
+ 
+-# Global state for the routing graph (built once on startup)
+-_road_graph: dict[str, dict[str, dict]] = defaultdict(dict)
++_ROAD_SPEED_KPH = {"arterial": 35.0, "collector": 25.0, "local": 18.0}
++
++
++@dataclass(frozen=True)
++class SafeRoute:
++    """A route calculated after flood-blocked roads have been removed."""
++
++    path: tuple[GeoPoint, ...]
++    distance_km: float
++    estimated_travel_time_minutes: float
++    traversed_road_ids: tuple[str, ...]
++
++
++# Graph state is built once on startup from the static district profile.
++_road_graph = nx.Graph()
+ _locations: dict[str, GeoPoint] = {}
+ 
+ 
+@@ -17,97 +33,83 @@ def build_routing_graph(district: DistrictProfile) -> None:
+     _road_graph.clear()
+     _locations.clear()
+ 
+-    # Add all entities to locations
++    """Build a bidirectional weighted graph from district roads and assets."""
++
++    _road_graph.clear()
++    _locations.clear()
++
+     for zone in district.zones:
+         _locations[zone.id] = zone.center
++        _road_graph.add_node(zone.id)
+     
+     for facility in district.hospitals + district.shelters:
+         _locations[facility.id] = facility.location
+-        # Zero-distance link between facility and its home zone
+-        _road_graph[facility.id][facility.zone_id] = {"length_km": 0.0, "road_id": None}
+-        _road_graph[facility.zone_id][facility.id] = {"length_km": 0.0, "road_id": None}
++        _road_graph.add_edge(
++            facility.id,
++            facility.zone_id,
++            length_km=0.0,
++            travel_time_minutes=0.0,
++            road_id=None,
++            geometry=(facility.location, _locations[facility.zone_id]),
++        )
+ 
+     for team in district.rescue_teams:
+         _locations[team.id] = team.location
+-        # Zero-distance link between team and its home zone
+-        _road_graph[team.id][team.home_zone_id] = {"length_km": 0.0, "road_id": None}
+-        _road_graph[team.home_zone_id][team.id] = {"length_km": 0.0, "road_id": None}
++        _road_graph.add_edge(
++            team.id,
++            team.home_zone_id,
++            length_km=0.0,
++            travel_time_minutes=0.0,
++            road_id=None,
++            geometry=(team.location, _locations[team.home_zone_id]),
++        )
+ 
+-    # Add roads as bidirectional edges
+     for road in district.roads:
+-        _road_graph[road.from_zone_id][road.to_zone_id] = {
+-            "length_km": road.length_km,
+-            "road_id": road.id,
+-            "geometry": road.geometry,
+-        }
+-        _road_graph[road.to_zone_id][road.from_zone_id] = {
+-            "length_km": road.length_km,
+-            "road_id": road.id,
+-            "geometry": tuple(reversed(road.geometry)),
+-        }
+-
+-
+-def find_safe_route(
+-    start_id: str, end_id: str, blocked_road_ids: set[str]
+-) -> tuple[list[GeoPoint], float]:
+-    """Find the shortest path avoiding blocked roads."""
++        travel_time_minutes = (road.length_km / _ROAD_SPEED_KPH[road.road_class]) * 60
++        _road_graph.add_edge(
++            road.from_zone_id,
++            road.to_zone_id,
++            length_km=road.length_km,
++            travel_time_minutes=travel_time_minutes,
++            road_id=road.id,
++            geometry=road.geometry,
++        )
++
++
++def find_safe_route(start_id: str, end_id: str, blocked_road_ids: set[str]) -> SafeRoute | None:
++    """Find the shortest route after removing flood-blocked road edges."""
+     if start_id not in _locations or end_id not in _locations:
+-        return [], 0.0
+-
+-    distances = {node: float("inf") for node in _locations}
+-    distances[start_id] = 0.0
+-    previous: dict[str, str | None] = {node: None for node in _locations}
+-
+-    pq: list[tuple[float, str]] = [(0.0, start_id)]
+-
+-    while pq:
+-        current_distance, current_node = heapq.heappop(pq)
+-
+-        if current_distance > distances[current_node]:
+-            continue
+-
+-        if current_node == end_id:
+-            break
+-
+-        for neighbor, edge_data in _road_graph[current_node].items():
+-            if edge_data["road_id"] in blocked_road_ids:
+-                continue
+-
+-            distance = current_distance + edge_data["length_km"]
+-
+-            if distance < distances[neighbor]:
+-                distances[neighbor] = distance
+-                previous[neighbor] = current_node
+-                heapq.heappush(pq, (distance, neighbor))
+-
+-    if distances[end_id] == float("inf"):
+-        return [], 0.0
+-
+-    # Reconstruct path nodes
+-    path_nodes = []
+-    current: str | None = end_id
+-    while current is not None:
+-        path_nodes.append(current)
+-        current = previous[current]
+-    path_nodes.reverse()
+-
+-    # Reconstruct exact geometry along the path
+-    path_coords = []
+-    for i in range(len(path_nodes) - 1):
+-        u = path_nodes[i]
+-        v = path_nodes[i + 1]
+-        edge = _road_graph[u][v]
+-
+-        if edge["road_id"] is None:
+-            # Facility/Team to zone virtual edge
+-            if not path_coords:
+-                path_coords.append(_locations[u])
+-            path_coords.append(_locations[v])
+-        else:
+-            geom = list(edge["geometry"])
+-            if not path_coords:
+-                path_coords.extend(geom)
+-            else:
+-                path_coords.extend(geom[1:])
+-
+-    return path_coords, distances[end_id]
++        return None
++
++    safe_graph = _road_graph.copy()
++    blocked_edges = [
++        (start, end)
++        for start, end, edge in safe_graph.edges(data=True)
++        if edge["road_id"] in blocked_road_ids
++    ]
++    safe_graph.remove_edges_from(blocked_edges)
++    try:
++        path_nodes = nx.shortest_path(safe_graph, start_id, end_id, weight="length_km", method="dijkstra")
++    except nx.NetworkXNoPath:
++        return None
++
++    path: list[GeoPoint] = []
++    traversed_road_ids: list[str] = []
++    distance_km = 0.0
++    travel_time_minutes = 0.0
++    for start, end in zip(path_nodes, path_nodes[1:]):
++        edge = safe_graph[start][end]
++        geometry = edge["geometry"]
++        if geometry[0] != _locations[start]:
++            geometry = tuple(reversed(geometry))
++        path.extend(geometry if not path else geometry[1:])
++        distance_km += edge["length_km"]
++        travel_time_minutes += edge["travel_time_minutes"]
++        if edge["road_id"] is not None:
++            traversed_road_ids.append(edge["road_id"])
++    return SafeRoute(
++        path=tuple(path),
++        distance_km=round(distance_km, 2),
++        estimated_travel_time_minutes=round(travel_time_minutes, 1),
++        traversed_road_ids=tuple(traversed_road_ids),
++    )
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index f45f838..c67afd7 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -2,5 +2,6 @@ fastapi>=0.115.0
+ uvicorn[standard]>=0.30.0
+ pytest>=8.0.0
+ httpx>=0.27.0
++networkx>=3.3
+ scikit-learn>=1.5.0
+ xgboost>=2.1.0
+diff --git a/tests/test_routing.py b/tests/test_routing.py
+index c36d556..1d2aa60 100644
+--- a/tests/test_routing.py
++++ b/tests/test_routing.py
+@@ -1,70 +1,51 @@
+-"""Tests for the routing engine."""
++"""Tests for NetworkX safe-route planning."""
+ 
+ from fastapi.testclient import TestClient
+ 
+ from app.main import app
++from app.models.simulation import RainfallScenario
+ from app.services.district_service import get_district
++from app.services.flood_simulation import simulate_flood
+ from app.services.routing_service import build_routing_graph, find_safe_route
+ 
+ 
+-def test_build_routing_graph():
+-    """Verify the routing graph initializes properly."""
+-    district = get_district()
+-    build_routing_graph(district)
+-    
+-    # Internal state check to ensure nodes are populated
+-    from app.services.routing_service import _road_graph, _locations
+-    assert len(_road_graph) > 0
+-    assert len(_locations) > 0
+-    assert district.zones[0].id in _locations
+-
+-
+-def test_find_safe_route_clear_path():
+-    """Verify route computation without blocked roads."""
+-    district = get_district()
+-    build_routing_graph(district)
+-    
+-    start_zone = district.zones[0].id
+-    end_zone = district.zones[-1].id
+-    
+-    path, dist = find_safe_route(start_zone, end_zone, blocked_road_ids=set())
+-    
+-    assert dist > 0.0
+-    assert len(path) >= 2
+-
+-
+-def test_find_safe_route_blocked_path():
+-    """Verify route computation respects blocked roads."""
+-    district = get_district()
+-    build_routing_graph(district)
+-    
+-    start_zone = district.zones[0].id
+-    end_zone = district.zones[-1].id
+-    
+-    # First find a clear route to identify an edge we can block
+-    clear_path, clear_dist = find_safe_route(start_zone, end_zone, set())
+-    assert clear_dist > 0
+-    
+-    # Block all roads to force no route available
+-    all_road_ids = {road.id for road in district.roads}
+-    blocked_path, blocked_dist = find_safe_route(start_zone, end_zone, all_road_ids)
+-    
+-    assert blocked_dist == 0.0
+-    assert len(blocked_path) == 0
+-
+-
+-def test_integration_simulate_to_routing():
+-    """End-to-end test verifying Simulation -> Blocked Roads -> Routing."""
+-    district = get_district()
+-    build_routing_graph(district)
+-    
++def setup_module() -> None:
++    build_routing_graph(get_district())
++
++
++def test_normal_route_returns_distance_time_and_path() -> None:
++    route = find_safe_route("team-01", "shelter-01", blocked_road_ids=set())
++
++    assert route is not None
++    assert route.distance_km > 0
++    assert route.estimated_travel_time_minutes > 0
++    assert len(route.path) >= 2
++    assert route.traversed_road_ids
++
++
++def test_blocked_roads_are_excluded_from_returned_route() -> None:
++    blocked_road_ids = {"road-07", "road-08"}
++    route = find_safe_route("team-01", "shelter-01", blocked_road_ids=blocked_road_ids)
++
++    assert route is not None
++    assert not set(route.traversed_road_ids).intersection(blocked_road_ids)
++
++
++def test_no_route_is_returned_when_every_road_is_blocked() -> None:
++    road_ids = {road.id for road in get_district().roads}
++
++    assert find_safe_route("zone-01", "zone-10", blocked_road_ids=road_ids) is None
++
++
++def test_route_endpoint_uses_simulation_blocked_roads_and_explains_result() -> None:
++    simulation = simulate_flood(get_district(), RainfallScenario.EXTREME)
++    expected_excluded_ids = sorted(road.road_id for road in simulation.blocked_roads)
++
+     with TestClient(app) as client:
+-        # We know team-01 and shelter-01 exist from static data
+-        response = client.get("/api/v1/route?start_id=team-01&end_id=shelter-01&scenario=extreme")
+-        assert response.status_code == 200
+-        
+-        data = response.json()
+-        assert "status" in data
+-        assert data["status"] in ("success", "no_route_available")
+-        assert "distance_km" in data
+-        assert "path" in data
++        response = client.get("/api/v1/route", params={"start_id": "team-01", "end_id": "shelter-01", "scenario": "extreme"})
++
++    assert response.status_code == 200
++    payload = response.json()
++    assert payload["excluded_road_ids"] == expected_excluded_ids
++    assert "flood-blocked roads" in payload["explanation"]
++    assert payload["status"] in {"success", "no_route_available"}
