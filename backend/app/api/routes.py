@@ -2,10 +2,11 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.models.damage_assessment import DamageAssessmentResponse
+from app.models.decision_engine import DecisionEngineResponse
 from app.models.district import DistrictProfile
 from app.models.hospital_recommendation import HospitalRecommendationResponse
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
@@ -13,6 +14,7 @@ from app.models.simulation import FloodSimulationResult, RainfallScenario
 from app.models.routing import RouteResponse
 from app.models.team_allocation import TeamAllocationResponse
 from app.services.damage_assessment import assess_image_damage
+from app.services.decision_engine import generate_decision_bundle
 from app.services.district_service import get_district
 from app.services.flood_simulation import simulate_flood
 from app.services.flood_prediction import get_prediction_service
@@ -102,3 +104,37 @@ async def evaluate_incident_image(file: UploadFile = File(...)) -> DamageAssessm
         return assess_image_damage(content, file.filename)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/decision-engine", response_model=DecisionEngineResponse, tags=["decision-engine"])
+async def decision_engine(
+    incident_zone_id: str = Form(...),
+    rainfall_mm: float = Form(...),
+    elevation_m: float = Form(...),
+    drainage_score: int = Form(...),
+    previous_water_level_m: float = Form(...),
+    required_specialty: str | None = Form(None),
+    file: UploadFile | None = File(None)
+) -> DecisionEngineResponse:
+    """Single endpoint returning the full recommendation bundle for the frontend."""
+    
+    image_bytes = None
+    image_filename = None
+    
+    if file and file.filename:
+        image_bytes = await file.read()
+        image_filename = file.filename
+        
+    district = get_district()
+    
+    return generate_decision_bundle(
+        district=district,
+        incident_zone_id=incident_zone_id,
+        rainfall_mm=rainfall_mm,
+        elevation_m=elevation_m,
+        drainage_score=drainage_score,
+        previous_water_level_m=previous_water_level_m,
+        required_specialty=required_specialty,
+        image_bytes=image_bytes,
+        image_filename=image_filename,
+    )
