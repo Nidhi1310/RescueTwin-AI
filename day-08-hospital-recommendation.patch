@@ -1,0 +1,273 @@
+diff --git a/backend/app/api/routes.py b/backend/app/api/routes.py
+index d929fe1..90179bf 100644
+--- a/backend/app/api/routes.py
++++ b/backend/app/api/routes.py
+@@ -6,12 +6,14 @@ from fastapi import APIRouter
+ from pydantic import BaseModel
+ 
+ from app.models.district import DistrictProfile
++from app.models.hospital_recommendation import HospitalRecommendationResponse
+ from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
+ from app.models.simulation import FloodSimulationResult, RainfallScenario
+ from app.models.routing import RouteResponse
+ from app.services.district_service import get_district
+ from app.services.flood_simulation import simulate_flood
+ from app.services.flood_prediction import get_prediction_service
++from app.services.hospital_recommendation import recommend_hospital
+ from app.services.routing_service import find_safe_route
+ 
+ router = APIRouter()
+@@ -57,6 +59,16 @@ def calculate_route(start_id: str, end_id: str, scenario: RainfallScenario = Rai
+     return RouteResponse(status="success", distance_km=round(distance, 2), path=path_coords)
+ 
+ 
++@router.get("/recommendations/hospital", response_model=HospitalRecommendationResponse, tags=["recommendations"])
++def recommend_hospital_for_incident(
++    start_id: str,
++    scenario: RainfallScenario = RainfallScenario.MODERATE,
++) -> HospitalRecommendationResponse:
++    """Recommend the most suitable hospital reachable from the specified origin."""
++
++    return recommend_hospital(get_district(), start_id, scenario)
++
++
+ @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
+ def predict_flood_severity(request: FloodPredictionRequest) -> FloodPredictionResponse:
+     """Predict flood severity using the persisted XGBoost baseline artifact."""
+diff --git a/backend/app/models/hospital_recommendation.py b/backend/app/models/hospital_recommendation.py
+new file mode 100644
+index 0000000..ed9aa45
+--- /dev/null
++++ b/backend/app/models/hospital_recommendation.py
+@@ -0,0 +1,41 @@
++"""Typed response models for hospital suitability recommendations."""
++
++from __future__ import annotations
++
++from typing import Literal
++
++from pydantic import BaseModel, Field
++
++
++class HospitalCandidate(BaseModel):
++    """A hospital that is reachable and suitable for the active scenario."""
++
++    hospital_id: str
++    hospital_name: str
++    zone_id: str
++    route_distance_km: float = Field(ge=0)
++    estimated_travel_time_minutes: float = Field(ge=0)
++    available_capacity: int = Field(ge=0)
++    flood_risk_score: float = Field(ge=0, le=100)
++    suitability_score: float = Field(ge=0, le=100)
++    rationale: str
++
++
++class HospitalExclusion(BaseModel):
++    """A hospital excluded before final suitability ranking."""
++
++    hospital_id: str
++    hospital_name: str
++    reason: str
++
++
++class HospitalRecommendationResponse(BaseModel):
++    """Frontend-ready selection, ranking, and exclusions for one incident origin."""
++
++    status: Literal["success", "no_suitable_hospital"]
++    start_id: str
++    scenario: str
++    selected_hospital: HospitalCandidate | None
++    ranked_hospitals: list[HospitalCandidate]
++    excluded_hospitals: list[HospitalExclusion]
++    explanation: str
+diff --git a/backend/app/services/hospital_recommendation.py b/backend/app/services/hospital_recommendation.py
+new file mode 100644
+index 0000000..e1de63f
+--- /dev/null
++++ b/backend/app/services/hospital_recommendation.py
+@@ -0,0 +1,113 @@
++"""Explainable hospital selection using capacity, flood risk, and safe routing."""
++
++from __future__ import annotations
++
++from app.models.district import DistrictProfile
++from app.models.hospital_recommendation import (
++    HospitalCandidate,
++    HospitalExclusion,
++    HospitalRecommendationResponse,
++)
++from app.models.simulation import RainfallScenario
++from app.services.flood_simulation import simulate_flood
++from app.services.routing_service import build_routing_graph, find_safe_route
++
++_MAX_SAFE_HOSPITAL_FLOOD_RISK = 75.0
++_ESTIMATED_RESPONSE_SPEED_KPH = 30.0
++
++
++def recommend_hospital(
++    district: DistrictProfile,
++    start_id: str,
++    scenario: RainfallScenario,
++) -> HospitalRecommendationResponse:
++    """Rank reachable hospitals for a scenario using explicit suitability factors."""
++
++    build_routing_graph(district)
++    simulation = simulate_flood(district, scenario)
++    flood_risk_by_zone = {impact.zone_id: impact.severity_score for impact in simulation.zone_impacts}
++    blocked_road_ids = {road.road_id for road in simulation.blocked_roads}
++    candidates: list[HospitalCandidate] = []
++    exclusions: list[HospitalExclusion] = []
++
++    for hospital in district.hospitals:
++        available_capacity = hospital.capacity - hospital.current_occupancy
++        if available_capacity <= 0:
++            exclusions.append(HospitalExclusion(
++                hospital_id=hospital.id,
++                hospital_name=hospital.name,
++                reason="Excluded because no staffed bed capacity is currently available.",
++            ))
++            continue
++
++        flood_risk = flood_risk_by_zone[hospital.zone_id]
++        if flood_risk >= _MAX_SAFE_HOSPITAL_FLOOD_RISK:
++            exclusions.append(HospitalExclusion(
++                hospital_id=hospital.id,
++                hospital_name=hospital.name,
++                reason=(
++                    f"Excluded because local flood risk is {flood_risk:.1f}/100, above the "
++                    f"{_MAX_SAFE_HOSPITAL_FLOOD_RISK:.0f} safety threshold."
++                ),
++            ))
++            continue
++
++        route = find_safe_route(start_id, hospital.id, blocked_road_ids)
++        if not route[0]:
++            exclusions.append(HospitalExclusion(
++                hospital_id=hospital.id,
++                hospital_name=hospital.name,
++                reason="Excluded because no safe route remains after flood-blocked roads are removed.",
++            ))
++            continue
++
++        route_distance_km = route[1]
++        travel_time_minutes = round((route_distance_km / _ESTIMATED_RESPONSE_SPEED_KPH) * 60, 1)
++        capacity_ratio = available_capacity / hospital.capacity
++        safety_score = (1 - flood_risk / 100) * 45
++        capacity_score = capacity_ratio * 35
++        distance_score = max(0.0, 20 - (route_distance_km * 4))
++        suitability_score = round(safety_score + capacity_score + distance_score, 1)
++        candidates.append(HospitalCandidate(
++            hospital_id=hospital.id,
++            hospital_name=hospital.name,
++            zone_id=hospital.zone_id,
++            route_distance_km=round(route_distance_km, 2),
++            estimated_travel_time_minutes=travel_time_minutes,
++            available_capacity=available_capacity,
++            flood_risk_score=flood_risk,
++            suitability_score=suitability_score,
++            rationale=(
++                f"Safe route is {route_distance_km:.2f} km; {available_capacity} beds are available; "
++                f"local flood risk is {flood_risk:.1f}/100."
++            ),
++        ))
++
++    ranked_hospitals = sorted(
++        candidates,
++        key=lambda candidate: (-candidate.suitability_score, candidate.route_distance_km, candidate.hospital_id),
++    )
++    if not ranked_hospitals:
++        return HospitalRecommendationResponse(
++            status="no_suitable_hospital",
++            start_id=start_id,
++            scenario=scenario.value,
++            selected_hospital=None,
++            ranked_hospitals=[],
++            excluded_hospitals=exclusions,
++            explanation="No hospital satisfies the current capacity, flood-risk, and safe-route constraints.",
++        )
++
++    selected = ranked_hospitals[0]
++    return HospitalRecommendationResponse(
++        status="success",
++        start_id=start_id,
++        scenario=scenario.value,
++        selected_hospital=selected,
++        ranked_hospitals=ranked_hospitals,
++        excluded_hospitals=exclusions,
++        explanation=(
++            f"{selected.hospital_name} is the highest-ranked suitable hospital after considering "
++            "safe-route distance, local flood risk, and available capacity."
++        ),
++    )
+diff --git a/tests/test_hospital_recommendation.py b/tests/test_hospital_recommendation.py
+new file mode 100644
+index 0000000..354d306
+--- /dev/null
++++ b/tests/test_hospital_recommendation.py
+@@ -0,0 +1,65 @@
++"""Tests for explainable hospital selection."""
++
++from fastapi.testclient import TestClient
++
++from app.main import app
++from app.models.simulation import RainfallScenario
++from app.services.district_service import get_district
++from app.services.hospital_recommendation import recommend_hospital
++
++
++def test_normal_conditions_return_an_explainable_ranked_hospital() -> None:
++    result = recommend_hospital(get_district(), "team-01", RainfallScenario.MODERATE)
++
++    assert result.status == "success"
++    assert result.selected_hospital is not None
++    assert result.ranked_hospitals[0] == result.selected_hospital
++    assert result.selected_hospital.available_capacity > 0
++    assert "safe-route distance" in result.explanation
++    assert result.selected_hospital.rationale
++
++
++def test_low_capacity_changes_the_selected_hospital() -> None:
++    district = get_district()
++    constrained_hospital = district.hospitals[0].model_copy(update={"current_occupancy": 179})
++    constrained_district = district.model_copy(update={"hospitals": (constrained_hospital, district.hospitals[1])})
++
++    result = recommend_hospital(constrained_district, "team-01", RainfallScenario.MODERATE)
++
++    assert result.status == "success"
++    assert result.selected_hospital is not None
++    assert result.selected_hospital.hospital_id == "hospital-02"
++
++
++def test_degraded_conditions_exclude_capacity_and_flood_risk() -> None:
++    district = get_district()
++    full_hospital = district.hospitals[0].model_copy(update={"current_occupancy": 180})
++    high_risk_zone = district.zones[8].model_copy(update={"elevation_m": 60, "drainage_score": 1})
++    degraded_district = district.model_copy(
++        update={
++            "hospitals": (full_hospital, district.hospitals[1]),
++            "zones": (*district.zones[:8], high_risk_zone, district.zones[9]),
++        }
++    )
++
++    result = recommend_hospital(degraded_district, "team-01", RainfallScenario.EXTREME)
++
++    assert result.status == "no_suitable_hospital"
++    assert {exclusion.hospital_id for exclusion in result.excluded_hospitals} == {"hospital-01", "hospital-02"}
++    assert any("capacity" in exclusion.reason for exclusion in result.excluded_hospitals)
++    assert any("flood risk" in exclusion.reason for exclusion in result.excluded_hospitals)
++
++
++def test_hospital_endpoint_returns_a_structured_response() -> None:
++    with TestClient(app) as client:
++        response = client.get(
++            "/api/v1/recommendations/hospital",
++            params={"start_id": "team-01", "scenario": "severe"},
++        )
++
++    assert response.status_code == 200
++    payload = response.json()
++    assert payload["status"] == "success"
++    assert payload["selected_hospital"]
++    assert isinstance(payload["ranked_hospitals"], list)
++    assert isinstance(payload["excluded_hospitals"], list)
