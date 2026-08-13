@@ -10,11 +10,13 @@ from app.models.decision_engine import DecisionEngineResponse
 from app.models.district import DistrictProfile
 from app.models.hospital_recommendation import HospitalRecommendationResponse
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
+from app.models.report_generation import IncidentReportResponse
 from app.models.simulation import FloodSimulationResult, RainfallScenario
 from app.models.routing import RouteResponse
 from app.models.team_allocation import TeamAllocationResponse
 from app.services.damage_assessment import assess_image_damage
 from app.services.decision_engine import generate_decision_bundle
+from app.services.report_generation import generate_incident_report
 from app.services.district_service import get_district
 from app.services.flood_simulation import simulate_flood
 from app.services.flood_prediction import get_prediction_service
@@ -138,3 +140,9 @@ async def decision_engine(
         image_bytes=image_bytes,
         image_filename=image_filename,
     )
+
+
+@router.post("/generate-report", response_model=IncidentReportResponse, tags=["report"])
+def generate_report(decision: DecisionEngineResponse) -> IncidentReportResponse:
+    """Generate a readable incident report based on a decision engine bundle."""
+    return generate_incident_report(decision)
