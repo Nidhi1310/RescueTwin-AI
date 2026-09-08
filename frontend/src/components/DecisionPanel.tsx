@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { fetchDecisionEngine } from "../api";
-import type { DecisionEngineResponse, DistrictProfile } from "../types";
+import { useMemo, useState } from "react";
+import { fetchDecisionEngine, generateIncidentReport } from "../api";
+import type { DecisionEngineResponse, DistrictProfile, IncidentReportResponse } from "../types";
 
 interface DecisionPanelProps {
   district: DistrictProfile;
@@ -12,24 +12,23 @@ export function DecisionPanel({ district }: DecisionPanelProps) {
   const [previousWaterLevelM, setPreviousWaterLevelM] = useState(1.2);
   const [requiredSpecialty, setRequiredSpecialty] = useState("");
   const [decision, setDecision] = useState<DecisionEngineResponse | null>(null);
+  const [report, setReport] = useState<IncidentReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   const zone = useMemo(
     () => district.zones.find((item) => item.id === incidentZoneId) ?? district.zones[0],
     [district.zones, incidentZoneId],
   );
 
-  useEffect(() => {
-    if (zone && !district.zones.some((item) => item.id === incidentZoneId)) {
-      setIncidentZoneId(zone.id);
-    }
-  }, [district.zones, incidentZoneId, zone]);
-
   const runDecision = async () => {
     if (!zone) return;
     setLoading(true);
     setError(null);
+    setReport(null);
+    setReportError(null);
     try {
       const result = await fetchDecisionEngine(
         zone.id,
@@ -47,10 +46,24 @@ export function DecisionPanel({ district }: DecisionPanelProps) {
     }
   };
 
+  const runReport = async () => {
+    if (!decision) return;
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      setReport(await generateIncidentReport(decision));
+    } catch (requestError: unknown) {
+      setReportError(requestError instanceof Error ? requestError.message : "Unable to generate the incident report.");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   const prediction = decision?.prediction;
   const hospital = decision?.hospital_recommendation.selected_hospital;
   const shelter = decision?.shelter_recommendation.selected_shelter;
   const team = decision?.team_allocation.selected_team;
+  const damage = decision?.damage_assessment;
 
   return (
     <section className="rounded-2xl border border-line bg-panel p-5 shadow-panel">
@@ -58,13 +71,13 @@ export function DecisionPanel({ district }: DecisionPanelProps) {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Unified decision engine</p>
           <h2 className="mt-1 text-lg font-semibold text-white">Incident response recommendation</h2>
-          <p className="mt-1 text-xs text-slate-400">Run prediction, simulation, routing, facility selection, and team allocation from one API call.</p>
+          <p className="mt-1 text-xs text-slate-400">Run prediction, simulation, routing, facility selection, team allocation, and reporting from the existing backend.</p>
         </div>
         {decision && <span className="rounded-full border border-rescue/30 bg-rescue/10 px-3 py-1 text-[10px] font-semibold uppercase text-rescue">Decision ready</span>}
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="text-xs text-slate-400 lg:col-span-2">Incident zone
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="text-xs text-slate-400 sm:col-span-2">Incident zone
           <select value={incidentZoneId} onChange={(event) => setIncidentZoneId(event.target.value)} className="mt-1 w-full rounded-lg border border-line bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-water">
             {district.zones.map((item) => <option key={item.id} value={item.id}>{item.id} · {item.name}</option>)}
           </select>
@@ -87,12 +100,40 @@ export function DecisionPanel({ district }: DecisionPanelProps) {
       {error && <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{error}</p>}
 
       {decision && (
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Flood prediction</p><p className="mt-1 text-xl font-semibold text-white">{prediction?.predicted_flood_severity.toFixed(1)}</p><p className="text-[11px] text-slate-400">Confidence: {prediction?.confidence}</p></article>
-          <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Hospital</p><p className="mt-1 truncate text-sm font-semibold text-white">{hospital?.hospital_name ?? "None suitable"}</p><p className="text-[11px] text-slate-400">{hospital ? `${hospital.suitability_score.toFixed(1)} suitability · ${hospital.route_distance_km} km` : decision.hospital_recommendation.status}</p></article>
-          <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Shelter</p><p className="mt-1 truncate text-sm font-semibold text-white">{shelter?.shelter_name ?? "None suitable"}</p><p className="text-[11px] text-slate-400">{shelter ? `${shelter.suitability_score.toFixed(1)} suitability · ${shelter.available_capacity} spaces` : decision.shelter_recommendation.status}</p></article>
-          <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Rescue team</p><p className="mt-1 truncate text-sm font-semibold text-white">{team?.team_name ?? "None suitable"}</p><p className="text-[11px] text-slate-400">{team ? `${team.personnel_count} personnel · ${team.suitability_score.toFixed(1)} suitability` : decision.team_allocation.status}</p></article>
-        </div>
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Flood prediction</p><p className="mt-1 text-xl font-semibold text-white">{prediction?.predicted_flood_severity.toFixed(1)}</p><p className="text-[11px] text-slate-400">Confidence: {prediction?.confidence}</p></article>
+            <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Hospital</p><p className="mt-1 truncate text-sm font-semibold text-white">{hospital?.hospital_name ?? "None suitable"}</p><p className="text-[11px] text-slate-400">{hospital ? `${hospital.suitability_score.toFixed(1)} suitability · ${hospital.route_distance_km} km` : decision.hospital_recommendation.status}</p></article>
+            <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Shelter</p><p className="mt-1 truncate text-sm font-semibold text-white">{shelter?.shelter_name ?? "None suitable"}</p><p className="text-[11px] text-slate-400">{shelter ? `${shelter.suitability_score.toFixed(1)} suitability · ${shelter.available_capacity} spaces` : decision.shelter_recommendation.status}</p></article>
+            <article className="rounded-xl border border-line bg-slate-900/60 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Rescue team</p><p className="mt-1 truncate text-sm font-semibold text-white">{team?.team_name ?? "None suitable"}</p><p className="text-[11px] text-slate-400">{team ? `${team.personnel_count} personnel · ${team.suitability_score.toFixed(1)} suitability` : decision.team_allocation.status}</p></article>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <article className="rounded-xl border border-line bg-slate-900/60 p-4 lg:col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-water">Decision explanations</p>
+              <div className="mt-3 space-y-2 text-xs leading-5 text-slate-300">
+                <p><span className="font-semibold text-white">Hospital:</span> {decision.hospital_recommendation.explanation}</p>
+                <p><span className="font-semibold text-white">Shelter:</span> {decision.shelter_recommendation.explanation}</p>
+                <p><span className="font-semibold text-white">Team:</span> {decision.team_allocation.explanation}</p>
+              </div>
+            </article>
+            <article className="rounded-xl border border-line bg-slate-900/60 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-water">Damage assessment</p>
+              {damage ? (
+                <><p className="mt-2 text-sm font-semibold uppercase text-white">{String(damage.damage_level)}</p><p className="mt-1 text-xs text-slate-400">Confidence: {Number(damage.confidence).toFixed(1)}%</p><p className="mt-2 text-xs leading-5 text-slate-300">{String(damage.rationale)}</p></>
+              ) : <p className="mt-2 text-xs leading-5 text-slate-400">No incident image was supplied. Damage assessment is optional.</p>}
+            </article>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-line bg-slate-900/60 p-4">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div><p className="text-[10px] font-bold uppercase tracking-wider text-water">Incident report</p><p className="mt-1 text-xs text-slate-400">Generate a readable report from the same decision payload.</p></div>
+              <button type="button" disabled={reportLoading} onClick={runReport} className="rounded-lg border border-water/40 bg-water/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-water hover:bg-water/20 disabled:cursor-not-allowed disabled:opacity-50">{reportLoading ? "Generating…" : "Generate report"}</button>
+            </div>
+            {reportError && <p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{reportError}</p>}
+            {report && <pre className="mt-4 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-4 font-mono text-xs leading-5 text-slate-300">{report.report_content}</pre>}
+          </div>
+        </>
       )}
     </section>
   );
