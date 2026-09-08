@@ -18,7 +18,10 @@
     "postcss": "latest",
     "autoprefixer": "latest",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "@types/leaflet": "^1.9.20",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^5.0.0"
   },
   "devDependencies": {}
 }
