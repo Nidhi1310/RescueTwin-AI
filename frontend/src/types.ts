@@ -82,3 +82,81 @@ export interface FloodSimulationResult {
   blocked_roads: BlockedRoad[];
   explanation: string;
 }
+
+export interface FloodPredictionResponse {
+  predicted_flood_severity: number;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface RecommendationCandidate {
+  hospital_id?: string;
+  hospital_name?: string;
+  shelter_id?: string;
+  shelter_name?: string;
+  team_id?: string;
+  team_name?: string;
+  zone_id?: string;
+  home_zone_id?: string;
+  route_distance_km: number;
+  estimated_travel_time_minutes: number;
+  available_capacity?: number;
+  personnel_count?: number;
+  flood_risk_score?: number;
+  suitability_score: number;
+  rationale: string;
+  specialties?: string[];
+  specialty_match?: boolean;
+}
+
+export interface HospitalRecommendationResponse {
+  status: string;
+  start_id: string;
+  scenario: string;
+  selected_hospital: RecommendationCandidate | null;
+  ranked_hospitals: RecommendationCandidate[];
+  excluded_hospitals: { hospital_id: string; hospital_name: string; reason: string }[];
+  explanation: string;
+}
+
+export interface ShelterRecommendationResponse {
+  status: string;
+  start_id: string;
+  scenario: string;
+  selected_shelter: RecommendationCandidate | null;
+  ranked_shelters: RecommendationCandidate[];
+  excluded_shelters: { shelter_id: string; shelter_name: string; reason: string }[];
+  explanation: string;
+}
+
+export interface TeamAllocationResponse {
+  status: string;
+  incident_zone_id: string;
+  scenario: string;
+  required_specialty: string | null;
+  selected_team: RecommendationCandidate | null;
+  ranked_teams: RecommendationCandidate[];
+  excluded_teams: { team_id: string; team_name: string; reason: string }[];
+  explanation: string;
+}
+
+export interface DamageAssessmentResponse {
+  [key: string]: unknown;
+}
+
+export interface DecisionEngineResponse {
+  incident_zone_id: string;
+  prediction: FloodPredictionResponse;
+  simulation: FloodSimulationResult;
+  damage_assessment: DamageAssessmentResponse | null;
+  hospital_recommendation: HospitalRecommendationResponse;
+  hospital_route: RouteResponse | null;
+  shelter_recommendation: ShelterRecommendationResponse;
+  shelter_route: RouteResponse | null;
+  team_allocation: TeamAllocationResponse;
+  team_route: RouteResponse | null;
+}
+
+export interface IncidentReportResponse {
+  report_content: string;
+  generated_at: string;
+}
