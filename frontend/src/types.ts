@@ -55,3 +55,30 @@ export interface RouteResponse {
   distance_km: number;
   path: GeoPoint[];
 }
+
+export type RainfallScenario = "moderate" | "severe" | "extreme";
+
+export interface ZoneFloodImpact {
+  zone_id: string;
+  zone_name: string;
+  severity_score: number;
+  affected: boolean;
+}
+
+export interface BlockedRoad {
+  road_id: string;
+  road_name: string;
+  from_zone_id: string;
+  to_zone_id: string;
+  reason: string;
+}
+
+export interface FloodSimulationResult {
+  scenario: RainfallScenario;
+  rainfall_intensity: number;
+  severity_score: number;
+  zone_impacts: ZoneFloodImpact[];
+  affected_zones: ZoneFloodImpact[];
+  blocked_roads: BlockedRoad[];
+  explanation: string;
+}
