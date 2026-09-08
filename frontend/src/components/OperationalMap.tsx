@@ -1,4 +1,8 @@
-import type { Facility, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
+import "leaflet/dist/leaflet.css";
+
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import type { LatLngBoundsExpression } from "leaflet";
+import type { Facility, FloodSimulationResult, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
 
 interface OperationalMapProps {
   zones: FloodZone[];
@@ -6,124 +10,204 @@ interface OperationalMapProps {
   shelters: Facility[];
   rescueTeams: RescueTeam[];
   route?: RouteResponse | null;
+  simulation?: FloodSimulationResult | null;
   startId?: string | null;
   endId?: string | null;
+  center: GeoPoint;
   onEntityClick?: (id: string) => void;
 }
 
-interface Bounds {
-  minLatitude: number;
-  maxLatitude: number;
-  minLongitude: number;
-  maxLongitude: number;
+function point(point: GeoPoint): [number, number] {
+  return [point.latitude, point.longitude];
 }
 
-function boundsFor(points: GeoPoint[]): Bounds {
-  return {
-    minLatitude: Math.min(...points.map((point) => point.latitude)),
-    maxLatitude: Math.max(...points.map((point) => point.latitude)),
-    minLongitude: Math.min(...points.map((point) => point.longitude)),
-    maxLongitude: Math.max(...points.map((point) => point.longitude)),
-  };
+function FitDistrict({ bounds }: { bounds: LatLngBoundsExpression }) {
+  const map = useMap();
+  map.fitBounds(bounds, { padding: [28, 28] });
+  return null;
 }
 
-function positionFor(point: GeoPoint, bounds: Bounds): { left: string; top: string } {
-  const horizontal = (point.longitude - bounds.minLongitude) / (bounds.maxLongitude - bounds.minLongitude);
-  const vertical = (bounds.maxLatitude - point.latitude) / (bounds.maxLatitude - bounds.minLatitude);
-  return { left: `${10 + horizontal * 80}%`, top: `${9 + vertical * 82}%` };
-}
-
-function Marker({ id, symbol, label, point, bounds, className, isSelected, onClick }: { id: string; symbol: string; label: string; point: GeoPoint; bounds: Bounds; className: string; isSelected?: boolean; onClick?: (id: string) => void }) {
+function ZoneMarker({
+  zone,
+  affected,
+  selected,
+  onClick,
+}: {
+  zone: FloodZone;
+  affected: boolean;
+  selected: boolean;
+  onClick?: (id: string) => void;
+}) {
   return (
-    <div 
-      className={`absolute -translate-x-1/2 -translate-y-1/2 group ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${isSelected ? 'scale-125 z-30' : ''}`} 
-      style={positionFor(point, bounds)}
-      onClick={() => onClick?.(id)}
+    <CircleMarker
+      center={point(zone.center)}
+      radius={selected ? 16 : 13}
+      pathOptions={{
+        color: selected ? "#ffffff" : affected ? "#ef4444" : "#38bdf8",
+        fillColor: affected ? "#ef4444" : "#0ea5e9",
+        fillOpacity: affected ? 0.42 : 0.2,
+        weight: selected ? 4 : 2,
+      }}
+      eventHandlers={{ click: () => onClick?.(zone.id) }}
     >
-      <div className={`grid h-7 w-7 place-items-center rounded-full border-2 ${isSelected ? 'border-white animate-pulse' : 'border-ink'} text-xs font-black shadow-lg ${className}`}>{symbol}</div>
-      <div className="pointer-events-none absolute left-1/2 top-8 z-20 hidden w-max max-w-44 -translate-x-1/2 rounded bg-ink px-2 py-1 text-[10px] font-medium text-slate-100 shadow-xl group-hover:block">{label}</div>
-    </div>
+      <Popup>
+        <strong>{zone.name}</strong>
+        <br />
+        {affected ? "Flood-affected zone" : "Operational zone"}
+      </Popup>
+    </CircleMarker>
   );
 }
 
-export function OperationalMap({ zones, hospitals, shelters, rescueTeams, route, startId, endId, onEntityClick }: OperationalMapProps) {
-  const allPoints = [...zones.map((zone) => zone.center), ...hospitals.map((facility) => facility.location), ...shelters.map((facility) => facility.location), ...rescueTeams.map((team) => team.location)];
-  const bounds = boundsFor(allPoints);
+function FacilityMarker({
+  facility,
+  selected,
+  kind,
+  onClick,
+}: {
+  facility: Facility;
+  selected: boolean;
+  kind: "hospital" | "shelter";
+  onClick?: (id: string) => void;
+}) {
+  const fillColor = kind === "hospital" ? "#fb7185" : "#fbbf24";
+  return (
+    <CircleMarker
+      center={point(facility.location)}
+      radius={selected ? 11 : 8}
+      pathOptions={{ color: "#0f172a", fillColor, fillOpacity: 0.95, weight: selected ? 4 : 2 }}
+      eventHandlers={{ click: () => onClick?.(facility.id) }}
+    >
+      <Popup>
+        <strong>{facility.name}</strong>
+        <br />
+        {kind === "hospital" ? "Hospital" : "Shelter"}
+        <br />
+        Capacity: {facility.capacity} · Occupancy: {facility.current_occupancy}
+      </Popup>
+    </CircleMarker>
+  );
+}
 
-  const renderRouteLine = () => {
-    if (!route || route.status !== "success" || route.path.length < 2) return null;
-    
-    const points = route.path.map(p => {
-      const pos = positionFor(p, bounds);
-      return `${parseFloat(pos.left)},${parseFloat(pos.top)}`;
-    }).join(' ');
+function TeamMarker({ team, selected, onClick }: { team: RescueTeam; selected: boolean; onClick?: (id: string) => void }) {
+  return (
+    <CircleMarker
+      center={point(team.location)}
+      radius={selected ? 10 : 7}
+      pathOptions={{
+        color: "#064e3b",
+        fillColor: team.status === "available" ? "#34d399" : "#94a3b8",
+        fillOpacity: 0.95,
+        weight: selected ? 4 : 2,
+      }}
+      eventHandlers={{ click: () => onClick?.(team.id) }}
+    >
+      <Popup>
+        <strong>{team.name}</strong>
+        <br />Status: {team.status}
+        <br />Personnel: {team.personnel_count}
+      </Popup>
+    </CircleMarker>
+  );
+}
 
-    return (
-      <svg className="absolute inset-0 h-full w-full pointer-events-none z-10" style={{ overflow: 'visible' }}>
-        <polyline 
-          points={points} 
-          fill="none" 
-          stroke="url(#routeGradient)" 
-          strokeWidth="4" 
-          strokeDasharray="8 6" 
-          className="animate-[dash_1s_linear_infinite]"
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
-        />
-        <defs>
-          <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#34d399" />
-            <stop offset="100%" stopColor="#60a5fa" />
-          </linearGradient>
-        </defs>
-      </svg>
-    );
-  };
+export function OperationalMap({
+  zones,
+  hospitals,
+  shelters,
+  rescueTeams,
+  route,
+  simulation,
+  startId,
+  endId,
+  center,
+  onEntityClick,
+}: OperationalMapProps) {
+  const allPoints = [
+    ...zones.map((z) => point(z.center)),
+    ...hospitals.map((h) => point(h.location)),
+    ...shelters.map((s) => point(s.location)),
+    ...rescueTeams.map((t) => point(t.location)),
+  ];
+  const bounds: LatLngBoundsExpression = allPoints.length ? allPoints : [point(center), point(center)];
+  const affectedIds = new Set(simulation?.affected_zones.map((z) => z.zone_id) ?? []);
+  const zoneById = new Map(zones.map((z) => [z.id, z]));
 
   return (
-    <section className="relative min-h-[520px] overflow-hidden rounded-2xl border border-line bg-[#0d1b2a] shadow-panel">
-      <div className="absolute inset-0 opacity-40 map-grid" />
-      <div className="absolute -left-20 top-1/3 h-64 w-[110%] rotate-[-14deg] rounded-[100%] border-y border-water/20 bg-water/5" />
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-ink/60 to-transparent" />
-      <div className="relative z-10 flex items-start justify-between p-5">
+    <section className="relative overflow-hidden rounded-2xl border border-line bg-[#0d1b2a] shadow-panel">
+      <div className="relative z-20 flex items-start justify-between gap-4 p-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-water">District overview</p>
-          <h2 className="mt-1 text-xl font-semibold text-white">Operational map shell</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Live tactical map</p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Flood response operations</h2>
         </div>
-        <div className="rounded-lg border border-white/10 bg-ink/70 px-3 py-2 text-xs text-slate-300">Static district data</div>
+        <div className="rounded-lg border border-white/10 bg-ink/90 px-3 py-2 text-xs text-slate-200 shadow-lg">
+          {simulation?.scenario.toUpperCase() ?? "NO SCENARIO"} · {simulation?.blocked_roads.length ?? 0} blocked roads
+        </div>
       </div>
-      <div className="absolute inset-0 pt-16">
-        {renderRouteLine()}
+
+      <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[560px] w-full">
+        <TileLayer
+          attribution='&copy; OpenStreetMap contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <FitDistrict bounds={bounds} />
+
         {zones.map((zone) => (
-          <div 
-            key={zone.id} 
-            className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 ${onEntityClick ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`} 
-            style={positionFor(zone.center, bounds)}
-            onClick={() => onEntityClick?.(zone.id)}
-          >
-            <div className={`grid h-14 w-14 place-items-center rounded-full border ${startId === zone.id || endId === zone.id ? 'border-white bg-water/40 shadow-[0_0_15px_rgba(56,189,248,0.5)]' : 'border-water/50 bg-water/15'} text-center text-[10px] font-semibold leading-tight text-sky-100 shadow-lg backdrop-blur-sm`}>
-              {zone.name}
-            </div>
-          </div>
+          <ZoneMarker
+            key={zone.id}
+            zone={zone}
+            affected={affectedIds.has(zone.id)}
+            selected={startId === zone.id || endId === zone.id}
+            onClick={onEntityClick}
+          />
         ))}
-        {hospitals.map((facility) => <Marker key={facility.id} id={facility.id} symbol="+" label={facility.name} point={facility.location} bounds={bounds} className="bg-rose-400 text-rose-950" isSelected={startId === facility.id || endId === facility.id} onClick={onEntityClick} />)}
-        {shelters.map((facility) => <Marker key={facility.id} id={facility.id} symbol="⌂" label={facility.name} point={facility.location} bounds={bounds} className="bg-amber-300 text-amber-950" isSelected={startId === facility.id || endId === facility.id} onClick={onEntityClick} />)}
-        {rescueTeams.map((team) => <Marker key={team.id} id={team.id} symbol="◆" label={`${team.name} · ${team.status}`} point={team.location} bounds={bounds} className="bg-rescue text-emerald-950" isSelected={startId === team.id || endId === team.id} onClick={onEntityClick} />)}
-      </div>
-      <div className="absolute bottom-5 left-5 z-20 flex flex-wrap gap-3 rounded-lg border border-white/10 bg-ink/75 px-3 py-2 text-xs text-slate-200 backdrop-blur">
-        <span><b className="mr-1 text-water">●</b>Zone</span>
+
+        {hospitals.map((facility) => (
+          <FacilityMarker key={facility.id} facility={facility} kind="hospital" selected={startId === facility.id || endId === facility.id} onClick={onEntityClick} />
+        ))}
+        {shelters.map((facility) => (
+          <FacilityMarker key={facility.id} facility={facility} kind="shelter" selected={startId === facility.id || endId === facility.id} onClick={onEntityClick} />
+        ))}
+        {rescueTeams.map((team) => (
+          <TeamMarker key={team.id} team={team} selected={startId === team.id || endId === team.id} onClick={onEntityClick} />
+        ))}
+
+        {simulation?.blocked_roads.map((road) => {
+          const from = zoneById.get(road.from_zone_id);
+          const to = zoneById.get(road.to_zone_id);
+          if (!from || !to) return null;
+          return (
+            <Polyline
+              key={road.road_id}
+              positions={[point(from.center), point(to.center)]}
+              pathOptions={{ color: "#ef4444", weight: 5, opacity: 0.9, dashArray: "10 8" }}
+            >
+              <Popup>
+                <strong>Blocked road: {road.road_name}</strong>
+                <br />{road.reason}
+              </Popup>
+            </Polyline>
+          );
+        })}
+
+        {route?.status === "success" && route.path.length > 1 && (
+          <Polyline
+            positions={route.path.map(point)}
+            pathOptions={{ color: "#22c55e", weight: 6, opacity: 0.9 }}
+          >
+            <Popup>Safe route · {route.distance_km} km</Popup>
+          </Polyline>
+        )}
+      </MapContainer>
+
+      <div className="absolute bottom-5 left-5 z-[1000] flex flex-wrap gap-3 rounded-lg border border-white/10 bg-ink/90 px-3 py-2 text-xs text-slate-100 shadow-xl">
+        <span><b className="mr-1 text-sky-400">●</b>Zone</span>
         <span><b className="mr-1 text-rose-400">●</b>Hospital</span>
         <span><b className="mr-1 text-amber-300">●</b>Shelter</span>
-        <span><b className="mr-1 text-rescue">●</b>Rescue team</span>
+        <span><b className="mr-1 text-emerald-400">●</b>Rescue team</span>
+        <span><b className="mr-1 text-red-500">━</b>Blocked road</span>
+        <span><b className="mr-1 text-green-400">━</b>Safe route</span>
       </div>
-      
-      <style>{`
-        @keyframes dash {
-          to {
-            stroke-dashoffset: -14;
-          }
-        }
-      `}</style>
     </section>
   );
 }
