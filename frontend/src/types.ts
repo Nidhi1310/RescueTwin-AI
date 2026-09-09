@@ -82,3 +82,57 @@ export interface FloodSimulationResult {
   blocked_roads: BlockedRoad[];
   explanation: string;
 }
+
+export interface FloodPredictionResponse {
+  severity_score: number;
+  risk_level: string;
+  contributing_factors: Record<string, number>;
+  confidence: number;
+}
+
+export interface HospitalRecommendationResponse {
+  recommended_hospital_id: string;
+  hospital_name: string;
+  distance_km: number;
+  available_capacity: number;
+  score: number;
+  reasoning: string;
+}
+
+export interface ShelterRecommendationResponse {
+  recommended_shelter_id: string;
+  shelter_name: string;
+  distance_km: number;
+  available_capacity: number;
+  score: number;
+  reasoning: string;
+}
+
+export interface TeamAllocationResponse {
+  assigned_team_id: string;
+  team_name: string;
+  distance_km: number;
+  eta_minutes: number;
+  score: number;
+  specialty_match: boolean;
+  reasoning: string;
+}
+
+export interface DecisionEngineResponse {
+  incident_zone_id: string;
+  prediction: FloodPredictionResponse;
+  simulation: FloodSimulationResult;
+  damage_assessment: any | null;
+  hospital_recommendation: HospitalRecommendationResponse;
+  hospital_route: RouteResponse | null;
+  shelter_recommendation: ShelterRecommendationResponse;
+  shelter_route: RouteResponse | null;
+  team_allocation: TeamAllocationResponse;
+  team_route: RouteResponse | null;
+}
+
+export interface IncidentReportResponse {
+  report_markdown: string;
+  generated_at: string;
+  confidence_level: string;
+}
