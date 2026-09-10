@@ -8,6 +8,7 @@ from app.models.hospital_recommendation import (
     HospitalExclusion,
     HospitalRecommendationResponse,
 )
+from app.models.reasoning import ReasoningFactor
 from app.models.simulation import RainfallScenario
 from app.services.flood_simulation import simulate_flood
 from app.services.routing_service import build_routing_graph, find_safe_route
@@ -33,11 +34,7 @@ def recommend_hospital(
     for hospital in district.hospitals:
         available_capacity = hospital.capacity - hospital.current_occupancy
         if available_capacity <= 0:
-            exclusions.append(HospitalExclusion(
-                hospital_id=hospital.id,
-                hospital_name=hospital.name,
-                reason="Excluded because no staffed bed capacity is currently available.",
-            ))
+            exclusions.append(HospitalExclusion(hospital_id=hospital.id, hospital_name=hospital.name, reason="Excluded because no staffed bed capacity is currently available."))
             continue
 
         flood_risk = flood_risk_by_zone[hospital.zone_id]
@@ -45,20 +42,13 @@ def recommend_hospital(
             exclusions.append(HospitalExclusion(
                 hospital_id=hospital.id,
                 hospital_name=hospital.name,
-                reason=(
-                    f"Excluded because local flood risk is {flood_risk:.1f}/100, above the "
-                    f"{_MAX_SAFE_HOSPITAL_FLOOD_RISK:.0f} safety threshold."
-                ),
+                reason=f"Excluded because local flood risk is {flood_risk:.1f}/100, above the {_MAX_SAFE_HOSPITAL_FLOOD_RISK:.0f} safety threshold.",
             ))
             continue
 
         route = find_safe_route(start_id, hospital.id, blocked_road_ids)
         if not route[0]:
-            exclusions.append(HospitalExclusion(
-                hospital_id=hospital.id,
-                hospital_name=hospital.name,
-                reason="Excluded because no safe route remains after flood-blocked roads are removed.",
-            ))
+            exclusions.append(HospitalExclusion(hospital_id=hospital.id, hospital_name=hospital.name, reason="Excluded because no safe route remains after flood-blocked roads are removed."))
             continue
 
         route_distance_km = route[1]
@@ -77,28 +67,20 @@ def recommend_hospital(
             available_capacity=available_capacity,
             flood_risk_score=flood_risk,
             suitability_score=suitability_score,
-            rationale=(
-                f"Safe route is {route_distance_km:.2f} km; {available_capacity} beds are available; "
-                f"local flood risk is {flood_risk:.1f}/100."
-            ),
+            rationale=(f"Safe route is {route_distance_km:.2f} km; {available_capacity} beds are available; local flood risk is {flood_risk:.1f}/100."),
+            reasoning_factors=[
+                ReasoningFactor(factor="Flood safety", value=f"{flood_risk:.1f}/100 risk", weight=0.45, contribution=safety_score),
+                ReasoningFactor(factor="Available capacity", value=f"{available_capacity} / {hospital.capacity} beds", weight=0.35, contribution=capacity_score),
+                ReasoningFactor(factor="Safe-route distance", value=f"{route_distance_km:.2f} km", weight=0.20, contribution=distance_score),
+            ],
         ))
 
-    ranked_hospitals = sorted(
-        candidates,
-        key=lambda candidate: (-candidate.suitability_score, candidate.route_distance_km, candidate.hospital_id),
-    )
+    ranked_hospitals = sorted(candidates, key=lambda candidate: (-candidate.suitability_score, candidate.route_distance_km, candidate.hospital_id))
     if not ranked_hospitals:
-        return HospitalRecommendationResponse(
-            status="no_suitable_hospital",
-            start_id=start_id,
-            scenario=scenario.value,
-            selected_hospital=None,
-            ranked_hospitals=[],
-            excluded_hospitals=exclusions,
-            explanation="No hospital satisfies the current capacity, flood-risk, and safe-route constraints.",
-        )
+        return HospitalRecommendationResponse(status="no_suitable_hospital", start_id=start_id, scenario=scenario.value, selected_hospital=None, ranked_hospitals=[], excluded_hospitals=exclusions, explanation="No hospital satisfies the current capacity, flood-risk, and safe-route constraints.")
 
     selected = ranked_hospitals[0]
+    top_factor = max(selected.reasoning_factors, key=lambda factor: factor.contribution)
     return HospitalRecommendationResponse(
         status="success",
         start_id=start_id,
@@ -106,8 +88,7 @@ def recommend_hospital(
         selected_hospital=selected,
         ranked_hospitals=ranked_hospitals,
         excluded_hospitals=exclusions,
-        explanation=(
-            f"{selected.hospital_name} is the highest-ranked suitable hospital after considering "
-            "safe-route distance, local flood risk, and available capacity."
-        ),
+        explanation=(f"{selected.hospital_name} is selected with a {selected.suitability_score:.1f}/100 suitability score. "
+                     f"The strongest score contribution is {top_factor.factor.lower()} ({top_factor.contribution:.1f} points), "
+                     f"supported by a {selected.route_distance_km:.2f} km safe route and {selected.available_capacity} available beds."),
     )
