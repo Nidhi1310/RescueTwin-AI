@@ -2,7 +2,9 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api.routes import router
 from app.config import settings
@@ -23,4 +25,15 @@ app = FastAPI(
     description="Fictional flood-response decision-support backend.",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Normalize FastAPI validation failures into a stable client-facing shape."""
+    return JSONResponse(
+        status_code=422,
+        content={"error": "validation_error", "message": "Request validation failed.", "details": exc.errors()},
+    )
+
+
 app.include_router(router, prefix=settings.api_prefix)
