@@ -27,7 +27,7 @@ def allocate_team(
     build_routing_graph(district)
     simulation = simulate_flood(district, scenario)
     blocked_road_ids = {road.road_id for road in simulation.blocked_roads}
-    
+
     candidates: list[TeamCandidate] = []
     exclusions: list[TeamExclusion] = []
 
@@ -50,25 +50,37 @@ def allocate_team(
             continue
 
         travel_time_minutes = round((route_distance_km / _ESTIMATED_RESPONSE_SPEED_KPH) * 60, 1)
-        
-        # Scoring logic (0 to 100)
-        # Distance score: Max 50 points, degrades over distance (e.g., 0 points if > 25km)
         distance_score = max(0.0, 50 - (route_distance_km * 2))
-        
-        # Specialty score: 30 points if required specialty matches or isn't specified
-        specialty_match = False
         if required_specialty:
             specialty_match = required_specialty in team.specialties
             specialty_score = 30.0 if specialty_match else 0.0
         else:
             specialty_match = True
             specialty_score = 30.0
-            
-        # Personnel score: Up to 20 points for larger teams (max score at 10+ personnel)
         personnel_score = min(20.0, team.personnel_count * 2.0)
-        
         suitability_score = round(distance_score + specialty_score + personnel_score, 1)
-        
+
+        reasoning_factors = [
+            {
+                "factor": "Safe-route distance",
+                "value": f"{route_distance_km:.2f} km",
+                "weight": 0.50,
+                "contribution": round(distance_score, 1),
+            },
+            {
+                "factor": "Specialty match",
+                "value": "Matched" if specialty_match else "Not matched",
+                "weight": 0.30,
+                "contribution": round(specialty_score, 1),
+            },
+            {
+                "factor": "Personnel availability",
+                "value": f"{team.personnel_count} personnel",
+                "weight": 0.20,
+                "contribution": round(personnel_score, 1),
+            },
+        ]
+
         candidates.append(TeamCandidate(
             team_id=team.id,
             team_name=team.name,
@@ -84,9 +96,9 @@ def allocate_team(
                 f"Specialty match: {'Yes' if specialty_match else 'No'}. "
                 f"Personnel available: {team.personnel_count}."
             ),
+            reasoning_factors=reasoning_factors,
         ))
 
-    # Rank by suitability, then distance, then ID
     ranked_teams = sorted(
         candidates,
         key=lambda c: (-c.suitability_score, c.route_distance_km, c.team_id),
@@ -105,6 +117,7 @@ def allocate_team(
         )
 
     selected = ranked_teams[0]
+    top_factor = max(selected.reasoning_factors, key=lambda factor: factor.contribution)
     return TeamAllocationResponse(
         status="success",
         incident_zone_id=incident_zone_id,
@@ -114,7 +127,8 @@ def allocate_team(
         ranked_teams=ranked_teams,
         excluded_teams=exclusions,
         explanation=(
-            f"{selected.team_name} is the highest-ranked available team after considering "
-            "distance, safe-route accessibility, personnel count, and operational specialties."
+            f"{selected.team_name} is the highest-ranked available team with a "
+            f"{selected.suitability_score:.1f}/100 suitability score. The strongest contributing "
+            f"factor is {top_factor.factor.lower()} ({top_factor.value})."
         ),
     )
