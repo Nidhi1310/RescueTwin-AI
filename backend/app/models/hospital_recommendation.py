@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.models.reasoning import ReasoningFactor
+
 
 class HospitalCandidate(BaseModel):
     """A hospital that is reachable and suitable for the active scenario."""
@@ -18,7 +20,8 @@ class HospitalCandidate(BaseModel):
     available_capacity: int = Field(ge=0)
     flood_risk_score: float = Field(ge=0, le=100)
     suitability_score: float = Field(ge=0, le=100)
-    rationale: str
+    rationale: str = Field(min_length=1)
+    reasoning_factors: list[ReasoningFactor] = Field(min_length=1)
 
 
 class HospitalExclusion(BaseModel):
@@ -38,4 +41,4 @@ class HospitalRecommendationResponse(BaseModel):
     selected_hospital: HospitalCandidate | None
     ranked_hospitals: list[HospitalCandidate]
     excluded_hospitals: list[HospitalExclusion]
-    explanation: str
+    explanation: str = Field(min_length=1)
