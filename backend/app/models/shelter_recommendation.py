@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.models.reasoning import ReasoningFactor
+
 
 class ShelterCandidate(BaseModel):
     """A shelter that is reachable and suitable for the active scenario."""
@@ -18,7 +20,8 @@ class ShelterCandidate(BaseModel):
     available_capacity: int = Field(ge=0)
     flood_risk_score: float = Field(ge=0, le=100)
     suitability_score: float = Field(ge=0, le=100)
-    rationale: str
+    rationale: str = Field(min_length=1)
+    reasoning_factors: list[ReasoningFactor] = Field(min_length=1)
 
 
 class ShelterExclusion(BaseModel):
@@ -38,4 +41,4 @@ class ShelterRecommendationResponse(BaseModel):
     selected_shelter: ShelterCandidate | None
     ranked_shelters: list[ShelterCandidate]
     excluded_shelters: list[ShelterExclusion]
-    explanation: str
+    explanation: str = Field(min_length=1)
