@@ -68,6 +68,27 @@ def recommend_hospital(
         capacity_score = capacity_ratio * 35
         distance_score = max(0.0, 20 - (route_distance_km * 4))
         suitability_score = round(safety_score + capacity_score + distance_score, 1)
+
+        reasoning_factors = [
+            {
+                "factor": "Flood safety",
+                "value": f"{flood_risk:.1f}/100 local risk",
+                "weight": 0.45,
+                "contribution": round(safety_score, 1),
+            },
+            {
+                "factor": "Available capacity",
+                "value": f"{available_capacity} beds",
+                "weight": 0.35,
+                "contribution": round(capacity_score, 1),
+            },
+            {
+                "factor": "Safe-route distance",
+                "value": f"{route_distance_km:.2f} km",
+                "weight": 0.20,
+                "contribution": round(distance_score, 1),
+            },
+        ]
         candidates.append(HospitalCandidate(
             hospital_id=hospital.id,
             hospital_name=hospital.name,
@@ -81,6 +102,7 @@ def recommend_hospital(
                 f"Safe route is {route_distance_km:.2f} km; {available_capacity} beds are available; "
                 f"local flood risk is {flood_risk:.1f}/100."
             ),
+            reasoning_factors=reasoning_factors,
         ))
 
     ranked_hospitals = sorted(
@@ -99,6 +121,7 @@ def recommend_hospital(
         )
 
     selected = ranked_hospitals[0]
+    top_factor = max(selected.reasoning_factors, key=lambda factor: factor.contribution)
     return HospitalRecommendationResponse(
         status="success",
         start_id=start_id,
@@ -107,7 +130,8 @@ def recommend_hospital(
         ranked_hospitals=ranked_hospitals,
         excluded_hospitals=exclusions,
         explanation=(
-            f"{selected.hospital_name} is the highest-ranked suitable hospital after considering "
-            "safe-route distance, local flood risk, and available capacity."
+            f"{selected.hospital_name} is the highest-ranked suitable hospital with a "
+            f"{selected.suitability_score:.1f}/100 suitability score. The strongest contributing "
+            f"factor is {top_factor.factor.lower()} ({top_factor.value})."
         ),
     )
