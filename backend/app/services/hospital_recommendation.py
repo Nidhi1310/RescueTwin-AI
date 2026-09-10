@@ -132,6 +132,7 @@ def recommend_hospital(
         explanation=(
             f"{selected.hospital_name} is the highest-ranked suitable hospital with a "
             f"{selected.suitability_score:.1f}/100 suitability score. The strongest contributing "
-            f"factor is {top_factor.factor.lower()} ({top_factor.value})."
+            f"factor is {top_factor.factor.lower()} ({top_factor.value}); safe-route distance is "
+            f"{selected.route_distance_km:.2f} km."
         ),
     )
