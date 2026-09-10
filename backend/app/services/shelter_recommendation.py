@@ -28,42 +28,48 @@ def recommend_shelter(
     simulation = simulate_flood(district, scenario)
     flood_risk_by_zone = {impact.zone_id: impact.severity_score for impact in simulation.zone_impacts}
     blocked_road_ids = {road.road_id for road in simulation.blocked_roads}
-    
+
     candidates: list[ShelterCandidate] = []
     exclusions: list[ShelterExclusion] = []
 
     for facility in district.shelters:
         if facility.type != FacilityType.SHELTER:
             continue
-            
+
         available_capacity = facility.capacity - facility.current_occupancy
         if available_capacity <= 0:
-            exclusions.append(ShelterExclusion(
-                shelter_id=facility.id,
-                shelter_name=facility.name,
-                reason="Excluded because no capacity is currently available.",
-            ))
+            exclusions.append(
+                ShelterExclusion(
+                    shelter_id=facility.id,
+                    shelter_name=facility.name,
+                    reason="Excluded because no capacity is currently available.",
+                )
+            )
             continue
 
         flood_risk = flood_risk_by_zone[facility.zone_id]
         if flood_risk >= _MAX_SAFE_SHELTER_FLOOD_RISK:
-            exclusions.append(ShelterExclusion(
-                shelter_id=facility.id,
-                shelter_name=facility.name,
-                reason=(
-                    f"Excluded because local flood risk is {flood_risk:.1f}/100, above the "
-                    f"{_MAX_SAFE_SHELTER_FLOOD_RISK:.0f} safety threshold."
-                ),
-            ))
+            exclusions.append(
+                ShelterExclusion(
+                    shelter_id=facility.id,
+                    shelter_name=facility.name,
+                    reason=(
+                        f"Excluded because local flood risk is {flood_risk:.1f}/100, above the "
+                        f"{_MAX_SAFE_SHELTER_FLOOD_RISK:.0f} safety threshold."
+                    ),
+                )
+            )
             continue
 
         route, route_distance_km = find_safe_route(start_id, facility.id, blocked_road_ids)
         if not route:
-            exclusions.append(ShelterExclusion(
-                shelter_id=facility.id,
-                shelter_name=facility.name,
-                reason="Excluded because no safe route remains after flood-blocked roads are removed.",
-            ))
+            exclusions.append(
+                ShelterExclusion(
+                    shelter_id=facility.id,
+                    shelter_name=facility.name,
+                    reason="Excluded because no safe route remains after flood-blocked roads are removed.",
+                )
+            )
             continue
 
         travel_time_minutes = round((route_distance_km / _ESTIMATED_EVAC_SPEED_KPH) * 60, 1)
@@ -72,27 +78,52 @@ def recommend_shelter(
         capacity_score = capacity_ratio * 30
         distance_score = max(0.0, 20 - (route_distance_km * 3))
         suitability_score = round(safety_score + capacity_score + distance_score, 1)
-        
-        candidates.append(ShelterCandidate(
-            shelter_id=facility.id,
-            shelter_name=facility.name,
-            zone_id=facility.zone_id,
-            route_distance_km=round(route_distance_km, 2),
-            estimated_travel_time_minutes=travel_time_minutes,
-            available_capacity=available_capacity,
-            flood_risk_score=flood_risk,
-            suitability_score=suitability_score,
-            rationale=(
-                f"Safe route is {route_distance_km:.2f} km; {available_capacity} spots are available; "
-                f"local flood risk is {flood_risk:.1f}/100."
-            ),
-        ))
+
+        reasoning_factors = [
+            {
+                "factor": "Flood safety",
+                "value": f"{flood_risk:.1f}/100 local risk",
+                "weight": 0.50,
+                "contribution": round(safety_score, 1),
+            },
+            {
+                "factor": "Available capacity",
+                "value": f"{available_capacity} spots",
+                "weight": 0.30,
+                "contribution": round(capacity_score, 1),
+            },
+            {
+                "factor": "Safe-route distance",
+                "value": f"{route_distance_km:.2f} km",
+                "weight": 0.20,
+                "contribution": round(distance_score, 1),
+            },
+        ]
+        top_factor = max(reasoning_factors, key=lambda item: item["contribution"])
+
+        candidates.append(
+            ShelterCandidate(
+                shelter_id=facility.id,
+                shelter_name=facility.name,
+                zone_id=facility.zone_id,
+                route_distance_km=round(route_distance_km, 2),
+                estimated_travel_time_minutes=travel_time_minutes,
+                available_capacity=available_capacity,
+                flood_risk_score=flood_risk,
+                suitability_score=suitability_score,
+                rationale=(
+                    f"Safe route is {route_distance_km:.2f} km; {available_capacity} spots are available; "
+                    f"local flood risk is {flood_risk:.1f}/100."
+                ),
+                reasoning_factors=reasoning_factors,
+            )
+        )
 
     ranked_shelters = sorted(
         candidates,
         key=lambda c: (-c.suitability_score, c.route_distance_km, c.shelter_id),
     )
-    
+
     if not ranked_shelters:
         return ShelterRecommendationResponse(
             status="no_suitable_shelter",
@@ -113,7 +144,8 @@ def recommend_shelter(
         ranked_shelters=ranked_shelters,
         excluded_shelters=exclusions,
         explanation=(
-            f"{selected.shelter_name} is the highest-ranked suitable shelter after considering "
-            "safe-route distance, local flood risk, and available capacity."
+            f"{selected.shelter_name} is the highest-ranked suitable shelter with a "
+            f"{selected.suitability_score:.1f}/100 suitability score. The strongest contributing "
+            f"factor is {top_factor['factor'].lower()} ({top_factor['value']})."
         ),
     )
