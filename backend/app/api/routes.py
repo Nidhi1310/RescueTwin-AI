@@ -1,8 +1,8 @@
-"""Initial API endpoints for service health and static district data."""
+"""API endpoints for RescueTwin AI operational services."""
 
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from app.models.damage_assessment import DamageAssessmentResponse
@@ -32,105 +32,114 @@ class HealthResponse(BaseModel):
     service: str
 
 
+def _ensure_zone(zone_id: str) -> None:
+    if not any(zone.id == zone_id for zone in get_district().zones):
+        raise HTTPException(status_code=404, detail=f"Unknown zone id: {zone_id}")
+
+
+def _ensure_location(location_id: str) -> None:
+    district = get_district()
+    known_ids = {
+        item.id
+        for item in (
+            *district.zones,
+            *district.hospitals,
+            *district.shelters,
+            *district.rescue_teams,
+        )
+    }
+    if location_id not in known_ids:
+        raise HTTPException(status_code=404, detail=f"Unknown operational location id: {location_id}")
+
+
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 def health_check() -> HealthResponse:
-    """Confirm the API process is ready to serve requests."""
-
     return HealthResponse(status="ok", service="rescuetwin-api")
 
 
 @router.get("/district", response_model=DistrictProfile, tags=["district"])
 def district_metadata() -> DistrictProfile:
-    """Return all static operational data for Sundarpur District."""
-
     return get_district()
 
 
 @router.get("/simulate", response_model=FloodSimulationResult, tags=["simulation"])
 def simulate(scenario: RainfallScenario = RainfallScenario.MODERATE) -> FloodSimulationResult:
-    """Return deterministic zone impacts and road closures for a rainfall scenario."""
-
     return simulate_flood(get_district(), scenario)
 
 
 @router.get("/route", response_model=RouteResponse, tags=["routing"])
-def calculate_route(start_id: str, end_id: str, scenario: RainfallScenario = RainfallScenario.MODERATE) -> RouteResponse:
-    """Calculate the safest route avoiding roads blocked by the given scenario."""
+def calculate_route(
+    start_id: str = Query(min_length=1),
+    end_id: str = Query(min_length=1),
+    scenario: RainfallScenario = RainfallScenario.MODERATE,
+) -> RouteResponse:
+    _ensure_location(start_id)
+    _ensure_location(end_id)
     sim_result = simulate_flood(get_district(), scenario)
     blocked_ids = {road.road_id for road in sim_result.blocked_roads}
-    
     path_coords, distance = find_safe_route(start_id, end_id, blocked_ids)
-    
     if not path_coords:
         return RouteResponse(status="no_route_available", distance_km=0.0, path=[])
-        
     return RouteResponse(status="success", distance_km=round(distance, 2), path=path_coords)
 
 
 @router.get("/recommendations/hospital", response_model=HospitalRecommendationResponse, tags=["recommendations"])
 def recommend_hospital_for_incident(
-    start_id: str,
+    start_id: str = Query(min_length=1),
     scenario: RainfallScenario = RainfallScenario.MODERATE,
 ) -> HospitalRecommendationResponse:
-    """Recommend the most suitable hospital reachable from the specified origin."""
-
+    _ensure_location(start_id)
     return recommend_hospital(get_district(), start_id, scenario)
 
 
 @router.get("/recommendations/team", response_model=TeamAllocationResponse, tags=["recommendations"])
 def recommend_team_for_incident(
-    incident_zone_id: str,
+    incident_zone_id: str = Query(min_length=1),
     scenario: RainfallScenario = RainfallScenario.MODERATE,
-    required_specialty: str | None = None,
+    required_specialty: str | None = Query(default=None, min_length=1),
 ) -> TeamAllocationResponse:
-    """Allocate the most suitable available rescue team for an incident."""
-
+    _ensure_zone(incident_zone_id)
     return allocate_team(get_district(), incident_zone_id, scenario, required_specialty)
 
 
 @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
 def predict_flood_severity(request: FloodPredictionRequest) -> FloodPredictionResponse:
-    """Predict flood severity using the persisted XGBoost baseline artifact."""
-
     return get_prediction_service().predict(request)
 
 
 @router.post("/assess-damage", response_model=DamageAssessmentResponse, tags=["damage"])
 async def evaluate_incident_image(file: UploadFile = File(...)) -> DamageAssessmentResponse:
-    """Assess incident imagery and classify flood damage deterministically."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename not provided.")
-        
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
     try:
-        content = await file.read()
         return assess_image_damage(content, file.filename)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/decision-engine", response_model=DecisionEngineResponse, tags=["decision-engine"])
 async def decision_engine(
-    incident_zone_id: str = Form(...),
-    rainfall_mm: float = Form(...),
-    elevation_m: float = Form(...),
-    drainage_score: int = Form(...),
-    previous_water_level_m: float = Form(...),
-    required_specialty: str | None = Form(None),
-    file: UploadFile | None = File(None)
+    incident_zone_id: str = Form(..., min_length=1),
+    rainfall_mm: float = Form(..., ge=0, le=320),
+    elevation_m: float = Form(..., ge=55, le=110),
+    drainage_score: int = Form(..., ge=1, le=10),
+    previous_water_level_m: float = Form(..., ge=0, le=4),
+    required_specialty: str | None = Form(None, min_length=1),
+    file: UploadFile | None = File(None),
 ) -> DecisionEngineResponse:
-    """Single endpoint returning the full recommendation bundle for the frontend."""
-    
+    _ensure_zone(incident_zone_id)
     image_bytes = None
     image_filename = None
-    
     if file and file.filename:
         image_bytes = await file.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="Uploaded image is empty.")
         image_filename = file.filename
-        
-    district = get_district()
-    
     return generate_decision_bundle(
-        district=district,
+        district=get_district(),
         incident_zone_id=incident_zone_id,
         rainfall_mm=rainfall_mm,
         elevation_m=elevation_m,
@@ -144,5 +153,4 @@ async def decision_engine(
 
 @router.post("/generate-report", response_model=IncidentReportResponse, tags=["report"])
 def generate_report(decision: DecisionEngineResponse) -> IncidentReportResponse:
-    """Generate a readable incident report based on a decision engine bundle."""
     return generate_incident_report(decision)
