@@ -113,7 +113,7 @@ async def evaluate_incident_image(file: UploadFile = File(...)) -> DamageAssessm
         raise HTTPException(status_code=400, detail="Filename not provided.")
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+        raise HTTPException(status_code=400, detail="Empty file uploaded.")
     try:
         return assess_image_damage(content, file.filename)
     except ValueError as exc:
@@ -136,7 +136,7 @@ async def decision_engine(
     if file and file.filename:
         image_bytes = await file.read()
         if not image_bytes:
-            raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+            raise HTTPException(status_code=400, detail="Empty file uploaded.")
         image_filename = file.filename
     return generate_decision_bundle(
         district=get_district(),
