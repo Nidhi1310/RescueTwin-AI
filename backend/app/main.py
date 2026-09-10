@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.routes import router
+from app.config import settings
 from app.services.district_service import get_district
 from app.services.routing_service import build_routing_graph
 
@@ -22,4 +23,4 @@ app = FastAPI(
     description="Fictional flood-response decision-support backend.",
     lifespan=lifespan,
 )
-app.include_router(router, prefix="/api/v1")
+app.include_router(router, prefix=settings.api_prefix)
