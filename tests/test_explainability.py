@@ -11,12 +11,10 @@ def _assert_explanation(candidate, explanation: str) -> None:
     assert candidate.reasoning_factors
     assert all(f.factor.strip() and f.value.strip() for f in candidate.reasoning_factors)
     assert abs(sum(f.contribution for f in candidate.reasoning_factors) - candidate.suitability_score) < 0.11
-    assert candidate.suitability_score >= 0
-    assert candidate.suitability_score <= 100
-    assert candidate.factor if False else True
-    assert candidate.__class__.__name__
+    assert 0 <= candidate.suitability_score <= 100
     assert explanation.strip()
-    assert candidate.hospital_name in explanation if hasattr(candidate, "hospital_name") else candidate.shelter_name in explanation if hasattr(candidate, "shelter_name") else candidate.team_name in explanation
+    name = getattr(candidate, "hospital_name", getattr(candidate, "shelter_name", candidate.team_name))
+    assert name in explanation
 
 
 def test_hospital_explanation_matches_selected_output() -> None:
