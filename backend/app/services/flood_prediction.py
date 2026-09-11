@@ -17,7 +17,7 @@ from app.models.prediction import FloodPredictionRequest, FloodPredictionRespons
 from app.services.synthetic_data import CSV_COLUMNS, FEATURE_COLUMNS, FloodTrainingRecord, validate_training_records
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATASET_PATH = PROJECT_ROOT / "data" / "flood_training.csv"
+DEFAULT_DATASET_PATH = Path("/app/data/flood_training.csv")
 DEFAULT_ARTIFACT_PATH = PROJECT_ROOT / "backend" / "artifacts" / "flood_severity_xgb.joblib"
 _TRAIN_TEST_SPLIT_SEED = 42
 
