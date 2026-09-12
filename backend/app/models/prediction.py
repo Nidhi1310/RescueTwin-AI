@@ -15,8 +15,9 @@ class FloodPredictionRequest(BaseModel):
 
 
 class FloodPredictionResponse(BaseModel):
-    """A model prediction with confidence and a human-readable explanation."""
+    """A model prediction plus the inputs used to explain it."""
 
     predicted_flood_severity: float = Field(ge=0, le=100)
     confidence: Literal["low", "medium", "high"]
     explanation: str
+    input_factors: dict[str, float]
