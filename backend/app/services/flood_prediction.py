@@ -137,6 +137,12 @@ class FloodPredictionService:
             predicted_flood_severity=prediction,
             confidence=confidence,
             explanation=explanation,
+            input_factors={
+                "rainfall_mm": request.rainfall_mm,
+                "elevation_m": request.elevation_m,
+                "drainage_score": float(request.drainage_score),
+                "previous_water_level_m": request.previous_water_level_m,
+            },
         )
 
 
