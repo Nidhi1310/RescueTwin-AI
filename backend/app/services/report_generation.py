@@ -9,23 +9,14 @@ from app.models.report_generation import IncidentReportResponse
 
 
 def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReportResponse:
-    """
-    Generate a deterministic incident report based on the decision engine output.
-    This acts as a solid fallback if a local LLM is not available or disabled,
-    ensuring the application is fully functional offline and deterministically.
-    """
-    
-    # Extract prediction details
+    """Generate a deterministic incident report from decision-engine output."""
     severity_score = decision.prediction.predicted_flood_severity
     confidence = decision.prediction.confidence.upper()
     scenario = decision.simulation.scenario.upper()
-    
-    # Extract simulation details
     affected_zones_count = len(decision.simulation.zone_impacts)
     blocked_roads_count = len(decision.simulation.blocked_roads)
     blocked_roads_list = ", ".join(r.road_id for r in decision.simulation.blocked_roads) or "None"
-    
-    # Extract Damage Assessment if present
+
     damage_str = ""
     if decision.damage_assessment:
         dmg = decision.damage_assessment
@@ -35,8 +26,7 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
             f"- **Confidence**: {dmg.confidence}%\n"
             f"- **Rationale**: {dmg.rationale}\n\n"
         )
-        
-    # Extract Hospital details
+
     hosp_rec = decision.hospital_recommendation
     hosp_str = "No hospital available."
     if hosp_rec.status == "success" and hosp_rec.selected_hospital:
@@ -49,7 +39,6 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
             f"  - Reasoning: {h.rationale}\n"
         )
 
-    # Extract Shelter details
     shelt_rec = decision.shelter_recommendation
     shelt_str = "No shelter available."
     if shelt_rec.status == "success" and shelt_rec.selected_shelter:
@@ -62,7 +51,6 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
             f"  - Reasoning: {s.rationale}\n"
         )
 
-    # Extract Team details
     team_rec = decision.team_allocation
     team_str = "No team available."
     if team_rec.status == "success" and team_rec.selected_team:
@@ -74,18 +62,18 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
             f"  - Estimated Arrival: {t.estimated_travel_time_minutes} mins\n"
             f"  - Reasoning: {t.rationale}\n"
         )
-        
+
     report = textwrap.dedent(f"""\
-        # RescueTwin AI Incident Report
+        RescueTwin AI Incident Report
         **Incident Zone:** {decision.incident_zone_id}
-        
+
         ## Situation Summary
-        Based on real-time metrics, the predicted flood severity is **{severity_score}/100** ({confidence} confidence), resulting in a **{scenario}** flood scenario. 
+        Based on real-time metrics, the predicted flood severity is **{severity_score}/100** ({confidence} confidence), resulting in a **{scenario}** flood scenario.
         - **Affected Zones:** {affected_zones_count}
         - **Blocked Roads:** {blocked_roads_count} ({blocked_roads_list})
-        
+
         {damage_str}## Operational Recommendations
-        
+
         ### 1. Recommended Hospital
         {hosp_str}
         ### 2. Recommended Shelter
@@ -95,5 +83,5 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
         ---
         *Report generated automatically by RescueTwin AI Decision Engine.*
     """).strip()
-    
+
     return IncidentReportResponse(report_content=report)
