@@ -94,6 +94,6 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
         {team_str}
         ---
         *Report generated automatically by RescueTwin AI Decision Engine.*
-    """)
+    """).strip()
     
     return IncidentReportResponse(report_content=report)
