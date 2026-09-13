@@ -28,7 +28,7 @@ export function OperationsSummary({ simulation, decision, district }: Operations
   const selectedTeam = decision?.team_allocation.selected_team;
   const incidentZone = decision ? district.zones.find((zone) => zone.id === decision.incident_zone_id) : null;
 
-  const severity = simulation?.severity_score ?? decision?.simulation.severity_score ?? null;
+  const severity = decision?.prediction.predicted_flood_severity ?? simulation?.severity_score ?? null;
   const severityLabel = severity === null ? "Waiting for incident" : severity >= 80 ? "Critical" : severity >= 60 ? "High" : severity >= 35 ? "Moderate" : "Low";
   const severityTone = severity === null ? "text-slate-500" : severity >= 80 ? "text-rose-300" : severity >= 60 ? "text-orange-300" : severity >= 35 ? "text-amber-300" : "text-emerald-300";
 
