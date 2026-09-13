@@ -34,8 +34,7 @@ def generate_decision_bundle(
     image_bytes: bytes | None = None,
     image_filename: str | None = None,
 ) -> DecisionEngineResponse:
-    """Generate the unified decision bundle for the frontend."""
-
+    """Generate one internally consistent decision bundle for the selected incident."""
     prediction_req = FloodPredictionRequest(
         rainfall_mm=rainfall_mm,
         elevation_m=elevation_m,
@@ -43,14 +42,13 @@ def generate_decision_bundle(
         previous_water_level_m=previous_water_level_m,
     )
     prediction = get_prediction_service().predict(prediction_req)
-
     severity = prediction.predicted_flood_severity
+
+    # The selected rainfall scenario is the source of truth for the operational
+    # simulation. An explicit UI scenario always wins; otherwise use the same
+    # deterministic rainfall bands exposed by the simulation endpoint.
     if scenario_override is not None:
         scenario = scenario_override
-    elif severity >= 75:
-        scenario = RainfallScenario.EXTREME
-    elif severity >= 40:
-        scenario = RainfallScenario.SEVERE
     elif rainfall_mm >= 200:
         scenario = RainfallScenario.EXTREME
     elif rainfall_mm >= 100:
@@ -64,22 +62,17 @@ def generate_decision_bundle(
     hospital_rec = recommend_hospital(district, incident_zone_id, scenario)
     hospital_route = (
         _build_route(incident_zone_id, hospital_rec.selected_hospital.hospital_id, blocked_road_ids)
-        if hospital_rec.status == "success" and hospital_rec.selected_hospital
-        else None
+        if hospital_rec.status == "success" and hospital_rec.selected_hospital else None
     )
-
     shelter_rec = recommend_shelter(district, incident_zone_id, scenario)
     shelter_route = (
         _build_route(incident_zone_id, shelter_rec.selected_shelter.shelter_id, blocked_road_ids)
-        if shelter_rec.status == "success" and shelter_rec.selected_shelter
-        else None
+        if shelter_rec.status == "success" and shelter_rec.selected_shelter else None
     )
-
     team_rec = allocate_team(district, incident_zone_id, scenario, required_specialty)
     team_route = (
         _build_route(team_rec.selected_team.team_id, incident_zone_id, blocked_road_ids)
-        if team_rec.status == "success" and team_rec.selected_team
-        else None
+        if team_rec.status == "success" and team_rec.selected_team else None
     )
 
     damage_assessment = None
