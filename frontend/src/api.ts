@@ -59,6 +59,7 @@ export async function fetchDecisionBundle(
 ): Promise<DecisionEngineResponse> {
   const formData = new FormData();
   formData.append("incident_zone_id", zoneId);
+  formData.append("scenario", scenario);
 
   let rainfall = 50.0;
   if (scenario === "severe") rainfall = 100.0;

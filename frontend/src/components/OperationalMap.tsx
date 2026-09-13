@@ -1,5 +1,5 @@
 import "leaflet/dist/leaflet.css";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import type { LatLngBoundsExpression } from "leaflet";
 import type { Facility, FloodSimulationResult, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
@@ -47,25 +47,31 @@ function RouteLine({ route, color, label }: { route?: RouteResponse | null; colo
   return <Polyline positions={route.path.map(point)} pathOptions={{ color, weight: 6, opacity: 0.9 }}><Popup>{label} route · {route.distance_km} km</Popup></Polyline>;
 }
 
-export function OperationalMap({ zones, hospitals, shelters, rescueTeams, hospitalRoute, shelterRoute, teamRoute, simulation, selectedIds = new Set(), center, onEntityClick }: OperationalMapProps) {
-  const allPoints = [...zones.map((z) => point(z.center)), ...hospitals.map((h) => point(h.location)), ...shelters.map((s) => point(s.location)), ...rescueTeams.map((t) => point(t.location))];
+export function OperationalMap({ zones, hospitals, shelters, rescueTeams, hospitalRoute, shelterRoute, teamRoute, simulation, selectedIds, center, onEntityClick }: OperationalMapProps) {
+  const allPoints = useMemo(
+    () => [...zones.map((z) => point(z.center)), ...hospitals.map((h) => point(h.location)), ...shelters.map((s) => point(s.location)), ...rescueTeams.map((t) => point(t.location))],
+    [zones, hospitals, shelters, rescueTeams],
+  );
   const bounds: LatLngBoundsExpression = allPoints.length ? allPoints : [point(center), point(center)];
-  const affectedIds = new Set(simulation?.affected_zones.map((z) => z.zone_id) ?? []);
-  const zoneById = new Map(zones.map((z) => [z.id, z]));
+  const affectedIds = useMemo(
+    () => new Set(simulation?.affected_zones.map((z) => z.zone_id) ?? []),
+    [simulation?.affected_zones],
+  );
+  const zoneById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
   const scenarioLabel = simulation?.scenario ? simulation.scenario.toUpperCase() : "NO SCENARIO";
   const affectedCount = simulation?.affected_zones.length ?? 0;
   const blockedCount = simulation?.blocked_roads.length ?? 0;
 
   return <section className="relative overflow-hidden rounded-2xl border border-line bg-[#0d1b2a] shadow-panel">
-    <div className="relative z-20 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#0d1b2a]/95 p-4 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Live tactical map</p><h2 className="mt-1 text-xl font-semibold text-white">Flood response operations</h2><p className="mt-1 text-xs text-slate-400">Click a map entity to inspect operational details.</p></div><div className="flex flex-wrap gap-2 text-xs font-semibold"><span className="rounded-full border border-water/30 bg-water/10 px-3 py-1.5 text-water">{scenarioLabel}</span><span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1.5 text-rose-200">{affectedCount} affected zones</span><span className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-red-200">{blockedCount} blocked roads</span></div></div>
+    <div className="relative z-20 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#0d1b2a]/95 p-4 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Live tactical map</p><h2 className="mt-1 text-xl font-semibold text-white">Flood response operations</h2><p className="mt-1 text-xs text-slate-400">Click a flood zone to start incident analysis. Other markers show operational assets.</p></div><div className="flex flex-wrap gap-2 text-xs font-semibold"><span className="rounded-full border border-water/30 bg-water/10 px-3 py-1.5 text-water">{scenarioLabel}</span><span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1.5 text-rose-200">{affectedCount} affected zones</span><span className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-red-200">{blockedCount} blocked roads</span></div></div>
     <div className="relative">
       <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[560px] w-full">
         <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <FitDistrict bounds={bounds} />
-        {zones.map((zone) => <ZoneMarker key={zone.id} zone={zone} affected={affectedIds.has(zone.id)} selected={selectedIds.has(zone.id)} onClick={onEntityClick} />)}
-        {hospitals.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="hospital" selected={selectedIds.has(facility.id)} onClick={onEntityClick} />)}
-        {shelters.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="shelter" selected={selectedIds.has(facility.id)} onClick={onEntityClick} />)}
-        {rescueTeams.map((team) => <TeamMarker key={team.id} team={team} selected={selectedIds.has(team.id)} onClick={onEntityClick} />)}
+        {zones.map((zone) => <ZoneMarker key={zone.id} zone={zone} affected={affectedIds.has(zone.id)} selected={selectedIds?.has(zone.id) ?? false} onClick={onEntityClick} />)}
+        {hospitals.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="hospital" selected={selectedIds?.has(facility.id) ?? false} onClick={onEntityClick} />)}
+        {shelters.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="shelter" selected={selectedIds?.has(facility.id) ?? false} onClick={onEntityClick} />)}
+        {rescueTeams.map((team) => <TeamMarker key={team.id} team={team} selected={selectedIds?.has(team.id) ?? false} onClick={onEntityClick} />)}
         {simulation?.blocked_roads.map((road) => { const from = zoneById.get(road.from_zone_id); const to = zoneById.get(road.to_zone_id); if (!from || !to) return null; return <Polyline key={road.road_id} positions={[point(from.center), point(to.center)]} pathOptions={{ color: "#ef4444", weight: 6, opacity: 0.95, dashArray: "12 8" }}><Popup><strong>Blocked road: {road.road_name}</strong><br />{road.reason}</Popup></Polyline>; })}
         <RouteLine route={hospitalRoute} color="#fb7185" label="Hospital" />
         <RouteLine route={shelterRoute} color="#fbbf24" label="Shelter" />

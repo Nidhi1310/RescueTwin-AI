@@ -129,7 +129,21 @@ class FloodPredictionService:
         prediction = round(float(np.clip(self._model.predict(feature_row)[0], 0.0, 100.0)), 2)
         r2 = self._metrics["r2_score"]
         confidence: str = "high" if r2 >= 0.9 else "medium" if r2 >= 0.7 else "low"
-        return FloodPredictionResponse(predicted_flood_severity=prediction, confidence=confidence)
+        explanation = (
+            f"Predicted flood severity is {prediction}/100 based on rainfall, elevation, "
+            f"drainage, and previous water level inputs. Model confidence is {confidence}."
+        )
+        return FloodPredictionResponse(
+            predicted_flood_severity=prediction,
+            confidence=confidence,
+            explanation=explanation,
+            input_factors={
+                "rainfall_mm": request.rainfall_mm,
+                "elevation_m": request.elevation_m,
+                "drainage_score": float(request.drainage_score),
+                "previous_water_level_m": request.previous_water_level_m,
+            },
+        )
 
 
 _prediction_service: FloodPredictionService | None = None

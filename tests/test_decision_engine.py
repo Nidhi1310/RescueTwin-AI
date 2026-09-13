@@ -29,11 +29,10 @@ def test_decision_engine_bundle_consistency():
         
         # 2. Simulation uses the same scenario
         assert "simulation" in data
-        expected_scenario = "moderate"
-        if severity >= 75:
-            expected_scenario = "extreme"
-        elif severity >= 40:
-            expected_scenario = "severe"
+        # The decision engine uses the explicit rainfall bands used by the
+        # operational simulation when no UI scenario override is supplied.
+        rainfall_mm = payload["rainfall_mm"]
+        expected_scenario = "extreme" if rainfall_mm >= 200 else "severe" if rainfall_mm >= 100 else "moderate"
             
         assert data["simulation"]["scenario"].lower() == expected_scenario
         

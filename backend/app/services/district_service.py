@@ -12,7 +12,7 @@ def _point(latitude: float, longitude: float) -> GeoPoint:
 
 ZONE_ROWS = (
     ("zone-01", "Riverbend", 25.178, 85.545, 72, 3, 18200, "Low-lying riverbank homes and a market district."),
-    ("zone-02", "Old Wharf", 25.174, 85.551, 68, 2, 12400, "Historic warehouses beside the Kosi canal."),
+    ("zone-02", "Old Wharf", 25.174, 85.551, 68, 2, 12400, "Historic warehouses beside the Sundar Canal."),
     ("zone-03", "Meadowgate", 25.181, 85.557, 78, 6, 9600, "Mixed residential area with moderate drainage."),
     ("zone-04", "Eastbank", 25.176, 85.563, 74, 4, 15100, "Dense housing near the eastern drainage channel."),
     ("zone-05", "Civic Heights", 25.184, 85.552, 91, 8, 8700, "Elevated civic and commercial precinct."),
@@ -36,7 +36,7 @@ ROAD_ROWS = (
     ("road-03", "Meadowgate Avenue", "zone-03", "zone-04", 1.0, "arterial"),
     ("road-04", "Eastbank Link", "zone-04", "zone-10", 1.4, "collector"),
     ("road-05", "Civic Rise", "zone-03", "zone-05", 0.9, "arterial"),
-    ("road-06", "Hospital Road", "zone-05", "zone-09", 1.5, "arterial"),
+    ("road-06", "Civic Heights–Greenridge Arterial", "zone-05", "zone-09", 1.5, "arterial"),
     ("road-07", "Wharf Street", "zone-02", "zone-08", 1.2, "collector"),
     ("road-08", "Station Approach", "zone-08", "zone-01", 0.8, "arterial"),
     ("road-09", "South Connector", "zone-08", "zone-07", 1.4, "collector"),
@@ -47,7 +47,7 @@ ROAD_ROWS = (
     ("road-14", "Civic Loop East", "zone-05", "zone-04", 1.2, "arterial"),
     ("road-15", "Greenridge Way", "zone-05", "zone-09", 1.0, "collector"),
     ("road-16", "North Ridge Road", "zone-03", "zone-09", 1.7, "collector"),
-    ("road-17", "Wharf Bypass", "zone-02", "zone-06", 1.6, "arterial"),
+    ("road-17", "Old Wharf–Lakshmi Bypass", "zone-02", "zone-06", 1.6, "arterial"),
     ("road-18", "South Canal Road", "zone-07", "zone-10", 1.5, "collector"),
     ("road-19", "Station-Civic Boulevard", "zone-08", "zone-05", 1.4, "arterial"),
     ("road-20", "Meadow Lane", "zone-01", "zone-03", 1.1, "local"),
@@ -58,7 +58,7 @@ ROAD_ROWS = (
     ("road-25", "Station Service Road", "zone-08", "zone-06", 1.2, "local"),
     ("road-26", "Civic South Link", "zone-05", "zone-06", 1.6, "arterial"),
     ("road-27", "Eastern Perimeter", "zone-03", "zone-10", 1.9, "collector"),
-    ("road-28", "River-to-Canal Road", "zone-01", "zone-10", 2.2, "arterial"),
+    ("road-28", "Riverbend–Canal Link", "zone-01", "zone-10", 2.2, "arterial"),
     ("road-29", "Greenridge Descent", "zone-09", "zone-10", 2.0, "collector"),
     ("road-30", "Fields Bypass", "zone-07", "zone-04", 2.1, "arterial"),
 )

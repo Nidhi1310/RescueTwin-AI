@@ -128,6 +128,7 @@ async def decision_engine(
     drainage_score: int = Form(..., ge=1, le=10),
     previous_water_level_m: float = Form(..., ge=0, le=4),
     required_specialty: str | None = Form(None, min_length=1),
+    scenario: RainfallScenario | None = Form(None),
     file: UploadFile | None = File(None),
 ) -> DecisionEngineResponse:
     _ensure_zone(incident_zone_id)
@@ -146,6 +147,7 @@ async def decision_engine(
         drainage_score=drainage_score,
         previous_water_level_m=previous_water_level_m,
         required_specialty=required_specialty,
+        scenario_override=scenario,
         image_bytes=image_bytes,
         image_filename=image_filename,
     )
