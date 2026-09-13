@@ -51,6 +51,10 @@ def generate_decision_bundle(
         scenario = RainfallScenario.EXTREME
     elif severity >= 40:
         scenario = RainfallScenario.SEVERE
+    elif rainfall_mm >= 200:
+        scenario = RainfallScenario.EXTREME
+    elif rainfall_mm >= 100:
+        scenario = RainfallScenario.SEVERE
     else:
         scenario = RainfallScenario.MODERATE
 
