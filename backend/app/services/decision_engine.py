@@ -47,10 +47,6 @@ def generate_decision_bundle(
     severity = prediction.predicted_flood_severity
     if scenario_override is not None:
         scenario = scenario_override
-    elif rainfall_mm >= 150:
-        scenario = RainfallScenario.EXTREME
-    elif rainfall_mm >= 75:
-        scenario = RainfallScenario.SEVERE
     elif severity >= 75:
         scenario = RainfallScenario.EXTREME
     elif severity >= 40:
