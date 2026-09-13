@@ -30,6 +30,7 @@ def generate_decision_bundle(
     drainage_score: int,
     previous_water_level_m: float,
     required_specialty: str | None = None,
+    scenario_override: RainfallScenario | None = None,
     image_bytes: bytes | None = None,
     image_filename: str | None = None,
 ) -> DecisionEngineResponse:
@@ -44,7 +45,9 @@ def generate_decision_bundle(
     prediction = get_prediction_service().predict(prediction_req)
 
     severity = prediction.predicted_flood_severity
-    if severity >= 75:
+    if scenario_override is not None:
+        scenario = scenario_override
+    elif severity >= 75:
         scenario = RainfallScenario.EXTREME
     elif severity >= 40:
         scenario = RainfallScenario.SEVERE
