@@ -13,7 +13,7 @@ def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReport
     severity_score = decision.prediction.predicted_flood_severity
     confidence = decision.prediction.confidence.upper()
     scenario = decision.simulation.scenario.upper()
-    affected_zones_count = len(decision.simulation.zone_impacts)
+    affected_zones_count = len(decision.simulation.affected_zones)
     blocked_roads_count = len(decision.simulation.blocked_roads)
     blocked_roads_list = ", ".join(r.road_id for r in decision.simulation.blocked_roads) or "None"
 
