@@ -1,3 +1,9 @@
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
+function apiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
+
 import type {
   DecisionEngineResponse,
   DistrictProfile,
@@ -34,19 +40,19 @@ async function requestError(response: Response, fallback: string): Promise<ApiEr
 }
 
 export async function fetchDistrict(): Promise<DistrictProfile> {
-  const response = await fetch("/api/v1/district");
+  const response = await fetch(apiUrl("/api/v1/district"));
   if (!response.ok) throw await requestError(response, "District data is unavailable.");
   return (await response.json()) as DistrictProfile;
 }
 
 export async function fetchSimulation(scenario: RainfallScenario): Promise<FloodSimulationResult> {
-  const response = await fetch(`/api/v1/simulate?scenario=${scenario}`);
+  const response = await fetch(apiUrl(`/api/v1/simulate?scenario=${scenario}`));
   if (!response.ok) throw await requestError(response, "Flood simulation could not be loaded.");
   return (await response.json()) as FloodSimulationResult;
 }
 
 export async function fetchRoute(startId: string, endId: string, scenario: string): Promise<RouteResponse> {
-  const response = await fetch(`/api/v1/route?start_id=${startId}&end_id=${endId}&scenario=${scenario}`);
+  const response = await fetch(apiUrl(`/api/v1/route?start_id=${startId}&end_id=${endId}&scenario=${scenario}`));
   if (!response.ok) throw await requestError(response, "A safe route could not be calculated.");
   return (await response.json()) as RouteResponse;
 }
@@ -70,7 +76,7 @@ export async function fetchDecisionBundle(
   formData.append("drainage_score", drainage.toString());
   formData.append("previous_water_level_m", "1.5");
 
-  const response = await fetch("/api/v1/decision-engine", {
+  const response = await fetch(apiUrl("/api/v1/decision-engine"), {
     method: "POST",
     body: formData,
   });
@@ -80,7 +86,7 @@ export async function fetchDecisionBundle(
 }
 
 export async function fetchReport(decision: DecisionEngineResponse): Promise<IncidentReportResponse> {
-  const response = await fetch("/api/v1/generate-report", {
+  const response = await fetch(apiUrl("/api/v1/generate-report"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(decision),
