@@ -1,8 +1,10 @@
 """FastAPI application entry point for RescueTwin AI."""
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -18,11 +20,22 @@ async def lifespan(app: FastAPI):
     yield
 
 
+cors_origins = [origin.strip() for origin in os.getenv("RESCUETWIN_CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",") if origin.strip()]
+
 app = FastAPI(
     title="RescueTwin AI API",
     version="0.1.0",
     description="Fictional flood-response decision-support backend.",
     lifespan=lifespan,
+)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

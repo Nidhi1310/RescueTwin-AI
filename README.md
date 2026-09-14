@@ -162,6 +162,17 @@ A successful run should report all tests passing. Warnings from third-party depe
 
 The selected scenario is carried through the decision-engine workflow so simulation, recommendations, routing constraints, dashboard state, and generated report describe the same incident state.
 
+## Production deployment
+
+A Render Blueprint is included at `render.yaml` for a two-service deployment:
+
+- **rescuetwin-api** — FastAPI backend built from `backend/Dockerfile`.
+- **rescuetwin-frontend** — Vite/React static site served from `dist`.
+
+The frontend receives the backend's public Render URL at build time through `VITE_API_BASE_URL`, while the backend reads `RESCUETWIN_CORS_ORIGINS` for cross-origin browser requests.
+
+Deploy by creating a new Blueprint from the repository in Render and selecting the `main` branch after the deployment PR is merged. Render's Blueprint format supports Docker services, static Vite sites, health checks, and service-to-service environment references. 
+
 ## Docker demo
 
 The repository includes Docker Compose configuration for the backend and frontend:

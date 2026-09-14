@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: rescuetwin-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: RESCUETWIN_CORS_ORIGINS
+        value: "*"
+
+  - type: web
+    name: rescuetwin-frontend
+    runtime: static
+    buildCommand: npm ci && npm run build
+    rootDir: frontend
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: rescuetwin-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
