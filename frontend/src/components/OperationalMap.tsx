@@ -256,10 +256,10 @@ export function OperationalMap({
   return (
     <section className="relative overflow-hidden rounded-xl border border-[#16415f] bg-[#06111d] shadow-[0_18px_55px_rgba(0,0,0,.3)]">
       <div className="relative">
-        <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[675px] w-full">
+        <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[650px] w-full">
           <TileLayer
-            attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <FitDistrict bounds={bounds} />
           <MapControls />
