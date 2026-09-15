@@ -74,14 +74,10 @@ export function OperationalMap({ zones, hospitals, shelters, rescueTeams, hospit
     [simulation?.affected_zones],
   );
   const zoneById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
-  const scenarioLabel = simulation?.scenario ? simulation.scenario.toUpperCase() : "NO SCENARIO";
-  const affectedCount = simulation?.affected_zones.length ?? 0;
-  const blockedCount = simulation?.blocked_roads.length ?? 0;
+    return <section className="relative overflow-hidden rounded-2xl border border-[#183650] bg-[#071522] shadow-panel">
 
-  return <section className="relative overflow-hidden rounded-2xl border border-line bg-[#081522] shadow-panel">
-    <div className="relative z-20 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#0d1b2a]/95 p-4 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Live tactical map</p><h2 className="mt-1 text-xl font-semibold text-white">Flood response operations</h2><p className="mt-1 text-xs text-slate-400">Click a flood zone to start incident analysis. Other markers show operational assets.</p></div><div className="flex flex-wrap gap-2 text-xs font-semibold"><span className="rounded-full border border-water/30 bg-water/10 px-3 py-1.5 text-water">{scenarioLabel}</span><span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1.5 text-rose-200">{affectedCount} affected zones</span><span className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-red-200">{blockedCount} blocked roads</span></div></div>
     <div className="relative">
-      <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[560px] w-full">
+      <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[660px] w-full">
         <TileLayer attribution='&copy; OpenStreetMap contributors &copy; CARTO' url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" subdomains="abcd" />
         <FitDistrict bounds={bounds} />
         {zones.map((zone) => <ZoneMarker key={zone.id} zone={zone} affected={affectedIds.has(zone.id)} selected={selectedIds?.has(zone.id) ?? false} onClick={onEntityClick} />)}
@@ -93,7 +89,6 @@ export function OperationalMap({ zones, hospitals, shelters, rescueTeams, hospit
         <RouteLine route={shelterRoute} color="#ffc233" label="Shelter" />
         <RouteLine route={teamRoute} color="#22d3a7" label="Rescue team" />
       </MapContainer>
-      <div className="pointer-events-none absolute left-4 top-4 z-[1000] rounded-xl border border-[#1a435f] bg-[#07111f]/92 px-3 py-2 text-[11px] text-slate-200 shadow-2xl backdrop-blur"><div className="font-bold uppercase tracking-[0.12em] text-white">Operational overlays</div><div className="mt-1 text-slate-400">Scenario-driven · live simulation state</div></div>
       <div className="absolute bottom-4 left-4 right-4 z-[1000] flex flex-wrap gap-x-4 gap-y-2 rounded-xl border border-[#1a435f] bg-[#07111f]/94 px-4 py-3 text-[11px] text-slate-100 shadow-2xl backdrop-blur"><span><b className="mr-1.5 text-sky-400">●</b>Operational zone</span><span><b className="mr-1.5 text-rose-400">●</b>Flood-affected</span><span><b className="mr-1.5 text-rose-400">●</b>Hospital</span><span><b className="mr-1.5 text-amber-300">●</b>Shelter</span><span><b className="mr-1.5 text-emerald-400">●</b>Rescue team</span><span><b className="mr-1.5 text-red-500">━━</b>Blocked road</span><span><b className="mr-1.5 text-emerald-400">━━</b>Safe route</span></div>
     </div>
   </section>;
