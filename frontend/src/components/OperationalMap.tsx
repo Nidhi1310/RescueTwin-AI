@@ -1,6 +1,7 @@
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo } from "react";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { divIcon } from "leaflet";
 import type { LatLngBoundsExpression } from "leaflet";
 import type { Facility, FloodSimulationResult, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
 
