@@ -133,3 +133,10 @@ button:focus-visible, a:focus-visible {
 .tactical-zone-label::before {
   display: none !important;
 }
+
+.rescue-map-tiles {
+  filter: brightness(.48) contrast(1.12) saturate(.72);
+}
+.leaflet-tile-pane {
+  background: #091522;
+}
