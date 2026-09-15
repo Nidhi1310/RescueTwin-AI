@@ -159,7 +159,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid #22c7ff; outline-offs
   background: #071827;
 }
 
-.tactical-map .leaflet-tile-pane {
+.tactical-map .leaflet-tile {
   filter: brightness(.48) saturate(.82) contrast(1.15) hue-rotate(175deg);
 }
 
