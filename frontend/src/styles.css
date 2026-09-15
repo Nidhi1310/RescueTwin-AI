@@ -11,25 +11,17 @@
 }
 
 * { box-sizing: border-box; }
-
 html { background: #06111d; }
-
 body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(circle at 50% -20%, rgba(17, 82, 122, .13), transparent 42%),
+    radial-gradient(circle at 50% -20%, rgba(17, 82, 122, .14), transparent 42%),
     #06111d;
 }
-
 button, input, select { font: inherit; }
-
 button { transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease; }
-
-button:focus-visible, a:focus-visible {
-  outline: 2px solid #22c7ff;
-  outline-offset: 2px;
-}
+button:focus-visible, a:focus-visible { outline: 2px solid #22c7ff; outline-offset: 2px; }
 
 .map-grid {
   background-image:
@@ -38,40 +30,20 @@ button:focus-visible, a:focus-visible {
   background-size: 34px 34px;
 }
 
-/* Tactical Leaflet presentation: keep Leaflet behavior intact, change only its skin. */
 .leaflet-container {
-  background: #071522;
+  background: #06111d;
   font-family: inherit;
 }
 
-.leaflet-control-zoom,
-.leaflet-control-layers,
-.leaflet-bar {
-  border: 1px solid #1a435f !important;
-  border-radius: 9px !important;
-  overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .35) !important;
-}
-
-.leaflet-control-zoom a,
-.leaflet-control-layers {
-  background: #07111f !important;
-  color: #dbe7f3 !important;
-  border-color: #1a435f !important;
-}
-
-.leaflet-control-zoom a:hover,
-.leaflet-control-layers:hover {
-  background: #0d2133 !important;
-  color: #22c7ff !important;
+.leaflet-tile {
+  filter: brightness(.82) contrast(1.08) saturate(.82);
 }
 
 .leaflet-control-attribution {
-  background: rgba(4, 12, 21, .78) !important;
+  background: rgba(4, 12, 21, .82) !important;
   color: #647b8f !important;
   font-size: 9px !important;
 }
-
 .leaflet-control-attribution a { color: #7295ab !important; }
 
 .leaflet-popup-content-wrapper,
@@ -81,62 +53,101 @@ button:focus-visible, a:focus-visible {
   border: 1px solid #1a435f;
   box-shadow: 0 14px 35px rgba(0, 0, 0, .45);
 }
-
-.leaflet-popup-content {
-  margin: 12px 14px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
+.leaflet-popup-content { margin: 12px 14px; font-size: 12px; line-height: 1.55; }
 .leaflet-popup-content strong { color: #fff; }
-
-.leaflet-popup-close-button {
-  color: #7891a4 !important;
-}
-
-.leaflet-popup-close-button:hover {
-  color: #22c7ff !important;
-}
-
+.leaflet-popup-close-button { color: #7891a4 !important; }
+.leaflet-popup-close-button:hover { color: #22c7ff !important; }
 
 .tactical-marker-wrapper { background: transparent; border: 0; }
 .tactical-marker {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
-  border: 2px solid #07111f;
+  border: 2px solid #06111d;
   box-shadow: 0 0 0 1px rgba(255,255,255,.28), 0 7px 18px rgba(0,0,0,.38);
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 900;
   line-height: 1;
 }
-.tactical-marker--medical { background: #ff5964; color: #fff; }
-.tactical-marker--shelter { background: #ffc233; color: #241a00; font-size: 17px; }
+.tactical-marker--medical { background: #ff3f4a; color: #fff; }
+.tactical-marker--shelter { background: #ffc233; color: #241a00; }
 .tactical-marker--team { background: #22d3a7; color: #04251f; }
 .tactical-marker--selected {
-  box-shadow: 0 0 0 3px rgba(34,199,255,.8), 0 0 18px rgba(34,199,255,.35);
+  box-shadow: 0 0 0 3px rgba(34,199,255,.9), 0 0 20px rgba(34,199,255,.42);
+}
+
+.zone-center-hitbox {
+  background: transparent;
+  border: 0;
+}
+.zone-center-hitbox span {
+  display: block;
+  width: 1px;
+  height: 1px;
 }
 
 .tactical-zone-label {
-  background: rgba(5, 16, 28, .82) !important;
+  background: rgba(5, 16, 28, .9) !important;
   border: 0 !important;
   border-radius: 4px !important;
-  box-shadow: none !important;
-  color: #dbe7f3 !important;
+  box-shadow: 0 5px 12px rgba(0,0,0,.25) !important;
+  color: #e8f2fb !important;
   font-size: 10px !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   letter-spacing: .01em;
   padding: 3px 6px !important;
 }
-.tactical-zone-label::before {
-  display: none !important;
-}
+.tactical-zone-label::before { display: none !important; }
 
-.rescue-map-tiles {
-  filter: brightness(.48) contrast(1.12) saturate(.72);
+.tactical-map-control-group {
+  overflow: hidden;
+  border: 1px solid #1a435f;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.38);
 }
-.leaflet-tile-pane {
-  background: #091522;
+.tactical-map-button {
+  display: grid;
+  min-width: 38px;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid #1a435f;
+  background: rgba(7,17,31,.96);
+  color: #e7f1fa;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
 }
+.tactical-map-control-group .tactical-map-button {
+  border: 0;
+  border-radius: 0;
+}
+.tactical-map-button--divider { border-top: 1px solid #1a435f !important; }
+.tactical-map-button:hover,
+.tactical-map-button--active {
+  background: #0d2437;
+  color: #22c7ff;
+}
+.tactical-map-button > span:last-child { margin-top: -2px; }
+
+.legend-icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+}
+.legend-icon--zone { border: 2px dashed #22c7ff; }
+.legend-icon--flood { border: 2px dashed #ff3945; background: rgba(255,57,69,.16); }
+.legend-icon--hospital { background: #ff3945; color: white; border-radius: 5px; }
+.legend-icon--shelter { background: #ffc233; color: #241a00; border-radius: 5px; }
+.legend-icon--team { background: #22d3a7; color: #04251f; border-radius: 5px; }
+.legend-line { display: inline-block; width: 28px; border-top: 3px solid currentColor; }
+.legend-line--blocked { color: #ff3945; border-top-style: dashed; }
+.legend-line--safe { color: #18e4d1; }
+
+.shadow-panel { box-shadow: 0 18px 50px rgba(0,0,0,.24); }
