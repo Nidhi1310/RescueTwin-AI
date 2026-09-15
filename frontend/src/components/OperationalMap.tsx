@@ -19,6 +19,18 @@ interface OperationalMapProps {
   onEntityClick?: (id: string) => void;
 }
 
+const markerIcon = (kind: "hospital" | "shelter" | "team", selected = false) => {
+  const symbols = { hospital: "+", shelter: "⌂", team: "✦" } as const;
+  const classes = { hospital: "medical", shelter: "shelter", team: "team" } as const;
+  return divIcon({
+    className: "tactical-marker-wrapper",
+    html: `<span class="tactical-marker tactical-marker--${classes[kind]} ${selected ? "tactical-marker--selected" : ""}">${symbols[kind]}</span>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -15],
+  });
+};
+
 function point(value: GeoPoint): [number, number] { return [value.latitude, value.longitude]; }
 
 function FitDistrict({ bounds }: { bounds: LatLngBoundsExpression }) {
