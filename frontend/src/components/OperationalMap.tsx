@@ -78,7 +78,7 @@ export function OperationalMap({ zones, hospitals, shelters, rescueTeams, hospit
 
     <div className="relative">
       <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[660px] w-full">
-        <TileLayer attribution='&copy; OpenStreetMap contributors &copy; CARTO' url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" subdomains="abcd" />
+        <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" className="rescue-map-tiles" />
         <FitDistrict bounds={bounds} />
         {zones.map((zone) => <ZoneMarker key={zone.id} zone={zone} affected={affectedIds.has(zone.id)} selected={selectedIds?.has(zone.id) ?? false} onClick={onEntityClick} />)}
         {hospitals.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="hospital" selected={selectedIds?.has(facility.id) ?? false} onClick={onEntityClick} />)}
