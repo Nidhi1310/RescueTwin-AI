@@ -1,6 +1,6 @@
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo } from "react";
-import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import { divIcon } from "leaflet";
 import type { LatLngBoundsExpression } from "leaflet";
 import type { Facility, FloodSimulationResult, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
@@ -41,7 +41,13 @@ function FitDistrict({ bounds }: { bounds: LatLngBoundsExpression }) {
 
 function ZoneMarker({ zone, affected, selected, onClick }: { zone: FloodZone; affected: boolean; selected: boolean; onClick?: (id: string) => void }) {
   const severityLabel = affected ? "Flood-affected" : "Operational";
-  return <CircleMarker center={point(zone.center)} radius={selected ? 17 : affected ? 14 : 11} pathOptions={{ color: selected ? "#ffffff" : affected ? "#ff4d4d" : "#22c7ff", fillColor: affected ? "#ff4d4d" : "#159fd1", fillOpacity: affected ? 0.48 : 0.24, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(zone.id) }}><Popup><strong>{zone.name}</strong><br />Status: {severityLabel}<br />Elevation: {zone.elevation_m} m<br />Population: {zone.population.toLocaleString()}</Popup></CircleMarker>;
+  return <>
+    <Circle center={point(zone.center)} radius={affected ? 1050 : 820} pathOptions={{ color: selected ? "#22c7ff" : affected ? "#ff3b3b" : "#169bd2", fillColor: affected ? "#ef3333" : "#0b86bf", fillOpacity: affected ? 0.16 : 0.045, weight: selected ? 3 : 2, dashArray: "7 7" }} />
+    <CircleMarker center={point(zone.center)} radius={selected ? 18 : affected ? 14 : 10} pathOptions={{ color: selected ? "#ffffff" : affected ? "#ff3b3b" : "#22c7ff", fillColor: affected ? "#ff3b3b" : "#159fd1", fillOpacity: affected ? 0.95 : 0.75, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(zone.id) }}>
+      <Tooltip direction="top" offset={[0, -8]} permanent className="tactical-zone-label">{zone.name}</Tooltip>
+      <Popup><strong>{zone.name}</strong><br />Status: {severityLabel}<br />Elevation: {zone.elevation_m} m<br />Population: {zone.population.toLocaleString()}</Popup>
+    </CircleMarker>
+  </>;
 }
 
 function FacilityMarker({ facility, selected, kind, onClick }: { facility: Facility; selected: boolean; kind: "hospital" | "shelter"; onClick?: (id: string) => void }) {
