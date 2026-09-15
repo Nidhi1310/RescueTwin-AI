@@ -2,7 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e2e8f0; background: #0b1220; }
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #dbe7f3;
+  background: #06111d;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; }
-.map-grid { background-image: linear-gradient(rgba(148, 163, 184, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, .12) 1px, transparent 1px); background-size: 34px 34px; }
+
+html { background: #06111d; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(17, 82, 122, .13), transparent 42%),
+    #06111d;
+}
+
+button, input, select { font: inherit; }
+
+button { transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease; }
+
+button:focus-visible, a:focus-visible {
+  outline: 2px solid #22c7ff;
+  outline-offset: 2px;
+}
+
+.map-grid {
+  background-image:
+    linear-gradient(rgba(72, 124, 157, .07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(72, 124, 157, .07) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+/* Tactical Leaflet presentation: keep Leaflet behavior intact, change only its skin. */
+.leaflet-container {
+  background: #071522;
+  font-family: inherit;
+}
+
+.leaflet-control-zoom,
+.leaflet-control-layers,
+.leaflet-bar {
+  border: 1px solid #1a435f !important;
+  border-radius: 9px !important;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35) !important;
+}
+
+.leaflet-control-zoom a,
+.leaflet-control-layers {
+  background: #07111f !important;
+  color: #dbe7f3 !important;
+  border-color: #1a435f !important;
+}
+
+.leaflet-control-zoom a:hover,
+.leaflet-control-layers:hover {
+  background: #0d2133 !important;
+  color: #22c7ff !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(4, 12, 21, .78) !important;
+  color: #647b8f !important;
+  font-size: 9px !important;
+}
+
+.leaflet-control-attribution a { color: #7295ab !important; }
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #081522;
+  color: #dbe7f3;
+  border: 1px solid #1a435f;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, .45);
+}
+
+.leaflet-popup-content {
+  margin: 12px 14px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.leaflet-popup-content strong { color: #fff; }
+
+.leaflet-popup-close-button {
+  color: #7891a4 !important;
+}
+
+.leaflet-popup-close-button:hover {
+  color: #22c7ff !important;
+}
