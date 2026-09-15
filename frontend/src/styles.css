@@ -118,3 +118,18 @@ button:focus-visible, a:focus-visible {
 .tactical-marker--selected {
   box-shadow: 0 0 0 3px rgba(34,199,255,.8), 0 0 18px rgba(34,199,255,.35);
 }
+
+.tactical-zone-label {
+  background: rgba(5, 16, 28, .82) !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  color: #dbe7f3 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: .01em;
+  padding: 3px 6px !important;
+}
+.tactical-zone-label::before {
+  display: none !important;
+}
