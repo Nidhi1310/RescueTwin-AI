@@ -20,13 +20,13 @@ interface AnalyticsDashboardProps {
   decision: DecisionEngineResponse | null;
 }
 
-const SEVERITY_COLORS = { monitoring: "#38bdf8", affected: "#f59e0b", severe: "#ef4444" };
-const IMPACT_COLORS = ["#ef4444", "#334155"];
+const SEVERITY_COLORS = { monitoring: "#22c7ff", affected: "#ffc233", severe: "#ff4d4d" };
+const IMPACT_COLORS = ["#ff4d4d", "#23415a"];
 
 export function AnalyticsDashboard({ simulation, decision }: AnalyticsDashboardProps) {
   if (!simulation) {
     return (
-      <section className="mt-6 rounded-2xl border border-line bg-panel p-5 shadow-panel">
+      <section className="mt-6 rounded-2xl border border-[#16304a] bg-[#0a1828] p-5 shadow-panel">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Incident analytics</p>
         <p className="mt-3 text-sm text-slate-400">Loading current scenario analytics…</p>
       </section>
@@ -48,7 +48,7 @@ export function AnalyticsDashboard({ simulation, decision }: AnalyticsDashboardP
   const selectedTeam = decision?.team_allocation.selected_team;
 
   return (
-    <section className="mt-6 rounded-2xl border border-line bg-panel p-5 shadow-panel" aria-labelledby="analytics-heading">
+    <section className="mt-6 rounded-2xl border border-[#16304a] bg-[#0a1828] p-5 shadow-panel" aria-labelledby="analytics-heading">
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Incident analytics</p>
@@ -68,10 +68,10 @@ export function AnalyticsDashboard({ simulation, decision }: AnalyticsDashboardP
           <div className="h-72" role="img" aria-label="Bar chart showing flood severity by zone">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={severityData} margin={{ top: 8, right: 10, left: -18, bottom: 48 }}>
-                <CartesianGrid stroke="#25334e" strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid stroke="#1a435f" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" angle={-35} textAnchor="end" interval={0} tick={{ fill: "#94a3b8", fontSize: 11 }} />
                 <YAxis domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: "#0b1220", border: "1px solid #25334e", borderRadius: "8px" }} labelStyle={{ color: "#e2e8f0" }} itemStyle={{ color: "#e2e8f0" }} formatter={(value) => [`${Number(value).toFixed(1)} / 100`, "Severity"]} />
+                <Tooltip contentStyle={{ background: "#07111f", border: "1px solid #1a435f", borderRadius: "8px" }} labelStyle={{ color: "#e2e8f0" }} itemStyle={{ color: "#e2e8f0" }} formatter={(value) => [`${Number(value).toFixed(1)} / 100`, "Severity"]} />
                 <Bar dataKey="severity" radius={[4, 4, 0, 0]}>
                   {severityData.map((entry) => <Cell key={entry.name} fill={entry.severity >= 70 ? SEVERITY_COLORS.severe : entry.affected ? SEVERITY_COLORS.affected : SEVERITY_COLORS.monitoring} />)}
                 </Bar>
@@ -87,7 +87,7 @@ export function AnalyticsDashboard({ simulation, decision }: AnalyticsDashboardP
                 <Pie data={impactData} dataKey="value" nameKey="name" innerRadius={58} outerRadius={92} paddingAngle={3}>
                   {impactData.map((entry, index) => <Cell key={entry.name} fill={IMPACT_COLORS[index]} />)}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#0b1220", border: "1px solid #25334e", borderRadius: "8px" }} itemStyle={{ color: "#e2e8f0" }} />
+                <Tooltip contentStyle={{ background: "#07111f", border: "1px solid #1a435f", borderRadius: "8px" }} itemStyle={{ color: "#e2e8f0" }} />
                 <Legend wrapperStyle={{ color: "#cbd5e1", fontSize: "12px" }} />
               </PieChart>
             </ResponsiveContainer>
@@ -95,7 +95,7 @@ export function AnalyticsDashboard({ simulation, decision }: AnalyticsDashboardP
         </ChartPanel>
       </div>
 
-      <div className="mt-6 border-t border-line pt-5">
+      <div className="mt-6 border-t border-[#16304a] pt-5">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Recommendation summary</p>
         {decision ? (
           <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -112,13 +112,13 @@ export function AnalyticsDashboard({ simulation, decision }: AnalyticsDashboardP
 }
 
 function Metric({ label, value, context }: { label: string; value: string; context: string }) {
-  return <article className="rounded-xl border border-line bg-ink/40 p-4"><p className="text-xs uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-white">{value}</p><p className="mt-1 text-xs text-slate-400">{context}</p></article>;
+  return <article className="rounded-xl border border-[#16304a] bg-[#071522] p-4"><p className="text-xs uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-white">{value}</p><p className="mt-1 text-xs text-slate-400">{context}</p></article>;
 }
 
 function ChartPanel({ title, children }: { title: string; children: ReactNode }) {
-  return <article className="rounded-xl border border-line bg-ink/30 p-4"><h3 className="text-sm font-semibold text-white">{title}</h3><div className="mt-3">{children}</div></article>;
+  return <article className="rounded-xl border border-[#16304a] bg-[#071522] p-4"><h3 className="text-sm font-semibold text-white">{title}</h3><div className="mt-3">{children}</div></article>;
 }
 
 function RecommendationCard({ label, value, detail, accent }: { label: string; value: string; detail: string; accent: string }) {
-  return <article className="rounded-xl border border-line bg-ink/40 p-4"><p className={`text-xs font-bold uppercase tracking-wider ${accent}`}>{label}</p><p className="mt-2 text-sm font-semibold text-white">{value}</p><p className="mt-1 text-xs text-slate-400">{detail}</p></article>;
+  return <article className="rounded-xl border border-[#16304a] bg-[#071522] p-4"><p className={`text-xs font-bold uppercase tracking-wider ${accent}`}>{label}</p><p className="mt-2 text-sm font-semibold text-white">{value}</p><p className="mt-1 text-xs text-slate-400">{detail}</p></article>;
 }
