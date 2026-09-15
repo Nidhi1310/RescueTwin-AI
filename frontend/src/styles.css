@@ -97,3 +97,24 @@ button:focus-visible, a:focus-visible {
 .leaflet-popup-close-button:hover {
   color: #22c7ff !important;
 }
+
+
+.tactical-marker-wrapper { background: transparent; border: 0; }
+.tactical-marker {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 2px solid #07111f;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.28), 0 7px 18px rgba(0,0,0,.38);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+.tactical-marker--medical { background: #ff5964; color: #fff; }
+.tactical-marker--shelter { background: #ffc233; color: #241a00; font-size: 17px; }
+.tactical-marker--team { background: #22d3a7; color: #04251f; }
+.tactical-marker--selected {
+  box-shadow: 0 0 0 3px rgba(34,199,255,.8), 0 0 18px rgba(34,199,255,.35);
+}
