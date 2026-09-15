@@ -33,9 +33,7 @@ function ZoneMarker({ zone, affected, selected, onClick }: { zone: FloodZone; af
 }
 
 function FacilityMarker({ facility, selected, kind, onClick }: { facility: Facility; selected: boolean; kind: "hospital" | "shelter"; onClick?: (id: string) => void }) {
-  const fillColor = kind === "hospital" ? "#ff5964" : "#ffc233";
-  const label = kind === "hospital" ? "Hospital" : "Shelter";
-  return <CircleMarker center={point(facility.location)} radius={selected ? 12 : 8} pathOptions={{ color: "#0f172a", fillColor, fillOpacity: 0.96, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(facility.id) }}><Popup><strong>{facility.name}</strong><br />{label}<br />Capacity: {facility.capacity}<br />Occupancy: {facility.current_occupancy}</Popup></CircleMarker>;
+  return <CircleMarker center={point(facility.location)} radius={selected ? 12 : 8} pathOptions={{ color: "#0f172a", fillColor, fillOpacity: 0.96, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(facility.id) }}><Popup><strong>{facility.name}</strong><br />{kind === "hospital" ? "Hospital" : "Shelter"}<br />Capacity: {facility.capacity}<br />Occupancy: {facility.current_occupancy}</Popup></CircleMarker>;
 }
 
 function TeamMarker({ team, selected, onClick }: { team: RescueTeam; selected: boolean; onClick?: (id: string) => void }) {
