@@ -33,12 +33,11 @@ function ZoneMarker({ zone, affected, selected, onClick }: { zone: FloodZone; af
 }
 
 function FacilityMarker({ facility, selected, kind, onClick }: { facility: Facility; selected: boolean; kind: "hospital" | "shelter"; onClick?: (id: string) => void }) {
-  return <CircleMarker center={point(facility.location)} radius={selected ? 12 : 8} pathOptions={{ color: "#0f172a", fillColor, fillOpacity: 0.96, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(facility.id) }}><Popup><strong>{facility.name}</strong><br />{kind === "hospital" ? "Hospital" : "Shelter"}<br />Capacity: {facility.capacity}<br />Occupancy: {facility.current_occupancy}</Popup></CircleMarker>;
+  return <Marker position={point(facility.location)} icon={markerIcon(kind, selected)} eventHandlers={{ click: () => onClick?.(facility.id) }}><Popup><strong>{facility.name}</strong><br />{kind === "hospital" ? "Hospital" : "Shelter"}<br />Capacity: {facility.capacity}<br />Occupancy: {facility.current_occupancy}</Popup></Marker>;
 }
 
 function TeamMarker({ team, selected, onClick }: { team: RescueTeam; selected: boolean; onClick?: (id: string) => void }) {
-  const available = team.status === "available";
-  return <CircleMarker center={point(team.location)} radius={selected ? 11 : 7} pathOptions={{ color: "#064e3b", fillColor: available ? "#22d3a7" : "#94a3b8", fillOpacity: 0.96, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(team.id) }}><Popup><strong>{team.name}</strong><br />Status: {team.status}<br />Personnel: {team.personnel_count}</Popup></CircleMarker>;
+  return <Marker position={point(team.location)} icon={markerIcon("team", selected)} eventHandlers={{ click: () => onClick?.(team.id) }}><Popup><strong>{team.name}</strong><br />Status: {team.status}<br />Personnel: {team.personnel_count}</Popup></Marker>;
 }
 
 function RouteLine({ route, color, label }: { route?: RouteResponse | null; color: string; label: string }) {
