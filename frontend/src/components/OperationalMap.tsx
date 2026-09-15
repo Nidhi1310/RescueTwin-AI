@@ -1,7 +1,8 @@
 import "leaflet/dist/leaflet.css";
-import { useEffect, useMemo } from "react";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import type { LatLngBoundsExpression } from "leaflet";
+import { useEffect, useMemo, useState } from "react";
+import { MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { divIcon } from "leaflet";
+import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 import type { Facility, FloodSimulationResult, FloodZone, GeoPoint, RescueTeam, RouteResponse } from "../types";
 
 interface OperationalMapProps {
@@ -18,67 +19,330 @@ interface OperationalMapProps {
   onEntityClick?: (id: string) => void;
 }
 
-function point(value: GeoPoint): [number, number] { return [value.latitude, value.longitude]; }
+const markerIcon = (kind: "hospital" | "shelter" | "team", selected = false) => {
+  const symbols = { hospital: "+", shelter: "⌂", team: "✦" } as const;
+  const classes = { hospital: "medical", shelter: "shelter", team: "team" } as const;
+  return divIcon({
+    className: "tactical-marker-wrapper",
+    html: `<span class="tactical-marker tactical-marker--${classes[kind]} ${selected ? "tactical-marker--selected" : ""}">${symbols[kind]}</span>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -17],
+  });
+};
+
+function point(value: GeoPoint): [number, number] {
+  return [value.latitude, value.longitude];
+}
 
 function FitDistrict({ bounds }: { bounds: LatLngBoundsExpression }) {
   const map = useMap();
-  useEffect(() => { map.fitBounds(bounds, { padding: [34, 34] }); }, [map, bounds]);
+  useEffect(() => {
+    map.fitBounds(bounds, { padding: [28, 28] });
+  }, [map, bounds]);
   return null;
 }
 
-function ZoneMarker({ zone, affected, selected, onClick }: { zone: FloodZone; affected: boolean; selected: boolean; onClick?: (id: string) => void }) {
-  const severityLabel = affected ? "Flood-affected" : "Operational";
-  return <CircleMarker center={point(zone.center)} radius={selected ? 17 : affected ? 14 : 11} pathOptions={{ color: selected ? "#ffffff" : affected ? "#f43f5e" : "#38bdf8", fillColor: affected ? "#f43f5e" : "#0ea5e9", fillOpacity: affected ? 0.48 : 0.24, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(zone.id) }}><Popup><strong>{zone.name}</strong><br />Status: {severityLabel}<br />Elevation: {zone.elevation_m} m<br />Population: {zone.population.toLocaleString()}</Popup></CircleMarker>;
+function LocateButton() {
+  const map = useMap();
+  const [locating, setLocating] = useState(false);
+
+  const locate = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        map.flyTo([coords.latitude, coords.longitude], Math.max(map.getZoom(), 14), { duration: 0.8 });
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 7000 },
+    );
+  };
+
+  return (
+    <button
+      type="button"
+      aria-label="Locate me"
+      title="Locate me"
+      onClick={locate}
+      className="tactical-map-button"
+    >
+      <span className={locating ? "animate-pulse" : ""}>⌾</span>
+    </button>
+  );
 }
 
-function FacilityMarker({ facility, selected, kind, onClick }: { facility: Facility; selected: boolean; kind: "hospital" | "shelter"; onClick?: (id: string) => void }) {
-  const fillColor = kind === "hospital" ? "#fb7185" : "#fbbf24";
-  const label = kind === "hospital" ? "Hospital" : "Shelter";
-  return <CircleMarker center={point(facility.location)} radius={selected ? 12 : 8} pathOptions={{ color: "#0f172a", fillColor, fillOpacity: 0.96, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(facility.id) }}><Popup><strong>{facility.name}</strong><br />{label}<br />Capacity: {facility.capacity}<br />Occupancy: {facility.current_occupancy}</Popup></CircleMarker>;
+function MapControls() {
+  const map = useMap();
+  const [layersOpen, setLayersOpen] = useState(false);
+
+  return (
+    <div className="absolute right-3 top-3 z-[1000] flex flex-col gap-1.5">
+      <div className="tactical-map-control-group">
+        <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => map.zoomIn()} className="tactical-map-button">+</button>
+        <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => map.zoomOut()} className="tactical-map-button tactical-map-button--divider">−</button>
+      </div>
+      <button
+        type="button"
+        aria-label="Toggle map layers"
+        title="Map layers"
+        onClick={() => setLayersOpen((value) => !value)}
+        className={`tactical-map-button ${layersOpen ? "tactical-map-button--active" : ""}`}
+      >
+        <span className="text-base">▱</span>
+        <span className="text-[9px] font-semibold">Layers</span>
+      </button>
+      <LocateButton />
+      {layersOpen && (
+        <div className="absolute right-0 top-[112px] w-40 rounded-lg border border-[#1a435f] bg-[#07111f]/96 p-2.5 text-[10px] text-slate-300 shadow-2xl backdrop-blur-md">
+          <p className="font-bold uppercase tracking-wider text-water">Map layers</p>
+          <p className="mt-1.5 text-slate-400">Operational zones, flood impact, facilities, teams and routes are active.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function zonePolygon(zone: FloodZone, index: number, affected: boolean): LatLngExpression[] {
+  const scale = affected ? 0.0105 : 0.0082;
+  const shapes = [
+    [[-0.85, -0.55], [-0.2, -1], [0.72, -0.78], [1, 0.02], [0.48, 0.85], [-0.38, 0.92], [-1, 0.35]],
+    [[-0.9, -0.2], [-0.48, -0.92], [0.28, -1], [0.96, -0.35], [0.72, 0.58], [0.05, 0.95], [-0.72, 0.7]],
+    [[-0.78, -0.72], [0.15, -1], [0.92, -0.45], [0.82, 0.48], [0.18, 1], [-0.72, 0.72], [-1, -0.05]],
+  ] as const;
+  const shape = shapes[index % shapes.length];
+  return shape.map(([latOffset, lngOffset]) => [
+    zone.center.latitude + latOffset * scale,
+    zone.center.longitude + lngOffset * scale,
+  ]);
+}
+
+function ZoneOverlay({
+  zone,
+  affected,
+  selected,
+  index,
+  onClick,
+}: {
+  zone: FloodZone;
+  affected: boolean;
+  selected: boolean;
+  index: number;
+  onClick?: (id: string) => void;
+}) {
+  const severityLabel = affected ? "Flood-affected" : "Operational";
+  const polygon = zonePolygon(zone, index, affected);
+
+  return (
+    <>
+      <Polygon
+        positions={polygon}
+        pathOptions={{
+          color: selected ? "#ffffff" : affected ? "#ff3038" : "#16a9ff",
+          fillColor: affected ? "#ff2f38" : "#0a8fce",
+          fillOpacity: affected ? 0.24 : 0.055,
+          weight: selected ? 3 : 2,
+          dashArray: "7 7",
+          lineJoin: "round",
+        }}
+        eventHandlers={{ click: () => onClick?.(zone.id) }}
+      />
+      <Marker position={point(zone.center)} icon={divIcon({
+        className: "zone-center-hitbox",
+        html: "<span></span>",
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      })} eventHandlers={{ click: () => onClick?.(zone.id) }}>
+        <Tooltip direction="top" offset={[0, -12]} permanent className="tactical-zone-label">
+          {zone.name}
+        </Tooltip>
+        <Popup>
+          <strong>{zone.name}</strong><br />
+          Status: {severityLabel}<br />
+          Elevation: {zone.elevation_m} m<br />
+          Population: {zone.population.toLocaleString()}
+        </Popup>
+      </Marker>
+    </>
+  );
+}
+
+function FacilityMarker({
+  facility,
+  selected,
+  kind,
+  onClick,
+}: {
+  facility: Facility;
+  selected: boolean;
+  kind: "hospital" | "shelter";
+  onClick?: (id: string) => void;
+}) {
+  return (
+    <Marker
+      position={point(facility.location)}
+      icon={markerIcon(kind, selected)}
+      eventHandlers={{ click: () => onClick?.(facility.id) }}
+    >
+      <Popup>
+        <strong>{facility.name}</strong><br />
+        {kind === "hospital" ? "Hospital" : "Shelter"}<br />
+        Capacity: {facility.capacity}<br />
+        Occupancy: {facility.current_occupancy}
+      </Popup>
+    </Marker>
+  );
 }
 
 function TeamMarker({ team, selected, onClick }: { team: RescueTeam; selected: boolean; onClick?: (id: string) => void }) {
-  const available = team.status === "available";
-  return <CircleMarker center={point(team.location)} radius={selected ? 11 : 7} pathOptions={{ color: "#064e3b", fillColor: available ? "#34d399" : "#94a3b8", fillOpacity: 0.96, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onClick?.(team.id) }}><Popup><strong>{team.name}</strong><br />Status: {team.status}<br />Personnel: {team.personnel_count}</Popup></CircleMarker>;
+  return (
+    <Marker
+      position={point(team.location)}
+      icon={markerIcon("team", selected)}
+      eventHandlers={{ click: () => onClick?.(team.id) }}
+    >
+      <Popup>
+        <strong>{team.name}</strong><br />
+        Status: {team.status}<br />
+        Personnel: {team.personnel_count}
+      </Popup>
+    </Marker>
+  );
 }
 
 function RouteLine({ route, color, label }: { route?: RouteResponse | null; color: string; label: string }) {
   if (route?.status !== "success" || route.path.length < 2) return null;
-  return <Polyline positions={route.path.map(point)} pathOptions={{ color, weight: 6, opacity: 0.9 }}><Popup>{label} route · {route.distance_km} km</Popup></Polyline>;
+  return (
+    <Polyline
+      positions={route.path.map(point)}
+      pathOptions={{ color, weight: 5, opacity: 0.95, lineCap: "round", lineJoin: "round" }}
+    >
+      <Popup>{label} route · {route.distance_km} km</Popup>
+    </Polyline>
+  );
 }
 
-export function OperationalMap({ zones, hospitals, shelters, rescueTeams, hospitalRoute, shelterRoute, teamRoute, simulation, selectedIds, center, onEntityClick }: OperationalMapProps) {
+export function OperationalMap({
+  zones,
+  hospitals,
+  shelters,
+  rescueTeams,
+  hospitalRoute,
+  shelterRoute,
+  teamRoute,
+  simulation,
+  selectedIds,
+  center,
+  onEntityClick,
+}: OperationalMapProps) {
   const allPoints = useMemo(
-    () => [...zones.map((z) => point(z.center)), ...hospitals.map((h) => point(h.location)), ...shelters.map((s) => point(s.location)), ...rescueTeams.map((t) => point(t.location))],
+    () => [
+      ...zones.map((z) => point(z.center)),
+      ...hospitals.map((h) => point(h.location)),
+      ...shelters.map((s) => point(s.location)),
+      ...rescueTeams.map((t) => point(t.location)),
+    ],
     [zones, hospitals, shelters, rescueTeams],
   );
+
   const bounds: LatLngBoundsExpression = allPoints.length ? allPoints : [point(center), point(center)];
   const affectedIds = useMemo(
     () => new Set(simulation?.affected_zones.map((z) => z.zone_id) ?? []),
     [simulation?.affected_zones],
   );
   const zoneById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
-  const scenarioLabel = simulation?.scenario ? simulation.scenario.toUpperCase() : "NO SCENARIO";
-  const affectedCount = simulation?.affected_zones.length ?? 0;
-  const blockedCount = simulation?.blocked_roads.length ?? 0;
 
-  return <section className="relative overflow-hidden rounded-2xl border border-line bg-[#0d1b2a] shadow-panel">
-    <div className="relative z-20 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#0d1b2a]/95 p-4 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-water">Live tactical map</p><h2 className="mt-1 text-xl font-semibold text-white">Flood response operations</h2><p className="mt-1 text-xs text-slate-400">Click a flood zone to start incident analysis. Other markers show operational assets.</p></div><div className="flex flex-wrap gap-2 text-xs font-semibold"><span className="rounded-full border border-water/30 bg-water/10 px-3 py-1.5 text-water">{scenarioLabel}</span><span className="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1.5 text-rose-200">{affectedCount} affected zones</span><span className="rounded-full border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-red-200">{blockedCount} blocked roads</span></div></div>
-    <div className="relative">
-      <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[560px] w-full">
-        <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <FitDistrict bounds={bounds} />
-        {zones.map((zone) => <ZoneMarker key={zone.id} zone={zone} affected={affectedIds.has(zone.id)} selected={selectedIds?.has(zone.id) ?? false} onClick={onEntityClick} />)}
-        {hospitals.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="hospital" selected={selectedIds?.has(facility.id) ?? false} onClick={onEntityClick} />)}
-        {shelters.map((facility) => <FacilityMarker key={facility.id} facility={facility} kind="shelter" selected={selectedIds?.has(facility.id) ?? false} onClick={onEntityClick} />)}
-        {rescueTeams.map((team) => <TeamMarker key={team.id} team={team} selected={selectedIds?.has(team.id) ?? false} onClick={onEntityClick} />)}
-        {simulation?.blocked_roads.map((road) => { const from = zoneById.get(road.from_zone_id); const to = zoneById.get(road.to_zone_id); if (!from || !to) return null; return <Polyline key={road.road_id} positions={[point(from.center), point(to.center)]} pathOptions={{ color: "#ef4444", weight: 6, opacity: 0.95, dashArray: "12 8" }}><Popup><strong>Blocked road: {road.road_name}</strong><br />{road.reason}</Popup></Polyline>; })}
-        <RouteLine route={hospitalRoute} color="#fb7185" label="Hospital" />
-        <RouteLine route={shelterRoute} color="#fbbf24" label="Shelter" />
-        <RouteLine route={teamRoute} color="#34d399" label="Rescue team" />
-      </MapContainer>
-      <div className="pointer-events-none absolute left-4 top-4 z-[1000] rounded-xl border border-white/15 bg-ink/90 px-3 py-2 text-[11px] text-slate-200 shadow-xl backdrop-blur"><div className="font-bold uppercase tracking-[0.12em] text-white">Operational overlays</div><div className="mt-1 text-slate-400">Scenario-driven · live simulation state</div></div>
-      <div className="absolute bottom-4 left-4 right-4 z-[1000] flex flex-wrap gap-x-4 gap-y-2 rounded-xl border border-white/15 bg-ink/95 px-4 py-3 text-[11px] text-slate-100 shadow-xl backdrop-blur"><span><b className="mr-1.5 text-sky-400">●</b>Operational zone</span><span><b className="mr-1.5 text-rose-400">●</b>Flood-affected</span><span><b className="mr-1.5 text-rose-400">●</b>Hospital</span><span><b className="mr-1.5 text-amber-300">●</b>Shelter</span><span><b className="mr-1.5 text-emerald-400">●</b>Rescue team</span><span><b className="mr-1.5 text-red-500">━━</b>Blocked road</span><span><b className="mr-1.5 text-emerald-400">━━</b>Safe route</span></div>
-    </div>
-  </section>;
+  return (
+    <section className="relative overflow-hidden rounded-xl border border-[#16415f] bg-[#06111d] shadow-[0_18px_55px_rgba(0,0,0,.3)]">
+      <div className="relative">
+        <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[520px] w-full tactical-map">
+          <TileLayer
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <FitDistrict bounds={bounds} />
+          <MapControls />
+
+          {zones.map((zone, index) => (
+            <ZoneOverlay
+              key={zone.id}
+              zone={zone}
+              index={index}
+              affected={affectedIds.has(zone.id)}
+              selected={selectedIds?.has(zone.id) ?? false}
+              onClick={onEntityClick}
+            />
+          ))}
+
+          {hospitals.map((facility) => (
+            <FacilityMarker
+              key={facility.id}
+              facility={facility}
+              kind="hospital"
+              selected={selectedIds?.has(facility.id) ?? false}
+              onClick={onEntityClick}
+            />
+          ))}
+
+          {shelters.map((facility) => (
+            <FacilityMarker
+              key={facility.id}
+              facility={facility}
+              kind="shelter"
+              selected={selectedIds?.has(facility.id) ?? false}
+              onClick={onEntityClick}
+            />
+          ))}
+
+          {rescueTeams.map((team) => (
+            <TeamMarker
+              key={team.id}
+              team={team}
+              selected={selectedIds?.has(team.id) ?? false}
+              onClick={onEntityClick}
+            />
+          ))}
+
+          {simulation?.blocked_roads.map((road) => {
+            const from = zoneById.get(road.from_zone_id);
+            const to = zoneById.get(road.to_zone_id);
+            if (!from || !to) return null;
+            return (
+              <Polyline
+                key={road.road_id}
+                positions={[point(from.center), point(to.center)]}
+                pathOptions={{
+                  color: "#ff3b45",
+                  weight: 5,
+                  opacity: 0.96,
+                  dashArray: "11 8",
+                  lineCap: "round",
+                }}
+              >
+                <Popup>
+                  <strong>Blocked road: {road.road_name}</strong><br />
+                  {road.reason}
+                </Popup>
+              </Polyline>
+            );
+          })}
+
+          <RouteLine route={hospitalRoute} color="#ff5964" label="Hospital" />
+          <RouteLine route={shelterRoute} color="#ffc233" label="Shelter" />
+          <RouteLine route={teamRoute} color="#18e4d1" label="Rescue team" />
+        </MapContainer>
+
+        <div className="absolute bottom-3 left-3 right-3 z-[1000] flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[#16415f] bg-[#06111d]/94 px-4 py-3 text-[11px] text-slate-100 shadow-2xl backdrop-blur-md">
+          <span className="flex items-center gap-2"><i className="legend-icon legend-icon--zone" />Operational zone</span>
+          <span className="flex items-center gap-2"><i className="legend-icon legend-icon--flood" />Flood-affected</span>
+          <span className="flex items-center gap-2"><i className="legend-icon legend-icon--hospital">+</i>Hospital</span>
+          <span className="flex items-center gap-2"><i className="legend-icon legend-icon--shelter">⌂</i>Shelter</span>
+          <span className="flex items-center gap-2"><i className="legend-icon legend-icon--team">✦</i>Rescue team</span>
+          <span className="flex items-center gap-2"><i className="legend-line legend-line--blocked" />Blocked road</span>
+          <span className="flex items-center gap-2"><i className="legend-line legend-line--safe" />Safe route</span>
+        </div>
+      </div>
+    </section>
+  );
 }
