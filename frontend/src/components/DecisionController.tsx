@@ -54,7 +54,7 @@ function RecommendationPanel({ title, accent, candidate, empty, explanation, fac
       <p className={`text-[10px] font-bold uppercase tracking-wider ${accent}`}>{title}</p>
       <p className="mt-1 font-semibold text-white">{candidate?.team_name ?? candidate?.hospital_name ?? candidate?.shelter_name ?? empty}</p>
       {details && <p className="mt-1 text-xs text-slate-400">{details}</p>}
-      {candidate ? <Reasoning explanation={explanation} factors={factors ?? []} /> : <><p className="mt-1 text-xs leading-5 text-slate-400">{explanation}</p><FallbackNote fallback={fallback} /></>}
+      {candidate ? <Reasoning explanation={explanation} factors={factors ?? []} /> : <><p className="mt-1 text-xs leading-5 text-slate-400">{fallback ? explanation.replace(fallback.advice, "").trim() : explanation}</p><FallbackNote fallback={fallback} /></>}
     </div>
   );
 }
