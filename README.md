@@ -421,7 +421,7 @@ The current map uses **keyless OpenStreetMap tiles**, so the frontend does not r
 
 ## Local Development
 
-**Quick start:** run `start.bat` (Windows) or `./start.sh` (Linux/macOS). It stops any stale servers, installs dependencies, starts both services, and opens the app. A yellow **BUILD v0.2 · FIXED** badge in the header confirms you are on the current build.
+**Quick start:** run `start.bat` (Windows) or `./start.sh` (Linux/macOS). It stops any stale servers, installs dependencies, starts both services, and opens the app.
 
 
 ### Prerequisites

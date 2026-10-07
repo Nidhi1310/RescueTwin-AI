@@ -55,7 +55,6 @@ export default function App() {
             </div>
           </div>
           <div className="rounded-full border border-[#22d3a7]/30 bg-[#22d3a7]/10 px-3 py-1.5 text-[11px] font-semibold text-[#65e6c5]">● System ready</div>
-          <div title="If you can see this badge you are running the fixed build" className="rounded-full border border-[#ffc233]/40 bg-[#ffc233]/10 px-3 py-1.5 text-[11px] font-bold text-[#ffc233]">BUILD v0.2 · FIXED · API {apiVersion ?? "?"}</div>
         </div>
       </header>
 

@@ -7,5 +7,5 @@ done
 python3 -m pip install -r backend/requirements-dev.txt
 (cd backend && python3 -m uvicorn app.main:app --reload) &
 (cd frontend && npm ci && npm run dev) &
-echo 'Open http://127.0.0.1:5173 and look for the yellow "BUILD v0.2 · FIXED" badge.'
+echo 'Open http://127.0.0.1:5173'
 wait

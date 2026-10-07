@@ -36,7 +36,7 @@ start "RescueTwin UI" cmd /k "npm.cmd run dev"
 timeout /t 8 >nul
 start http://127.0.0.1:5173
 echo.
-echo Look for the yellow "BUILD v0.2 - FIXED" badge at the top right. If it is missing, hard-refresh with Ctrl+Shift+R.
+echo If the page looks out of date, hard-refresh with Ctrl+Shift+R.
 exit /b 0
 
 :error
