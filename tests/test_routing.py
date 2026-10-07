@@ -12,11 +12,10 @@ def test_build_routing_graph():
     district = get_district()
     build_routing_graph(district)
     
-    # Internal state check to ensure nodes are populated
-    from app.services.routing_service import _road_graph, _locations
-    assert len(_road_graph) > 0
-    assert len(_locations) > 0
-    assert district.zones[0].id in _locations
+    from app.services.routing_service import get_routing_graph
+    graph = get_routing_graph(district)
+    assert len(graph.adjacency) > 0
+    assert district.zones[0].id in graph.locations
 
 
 def test_find_safe_route_clear_path():

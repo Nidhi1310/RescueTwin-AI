@@ -1,0 +1,34 @@
+{
+  "feature_columns": [
+    "rainfall_mm",
+    "elevation_m",
+    "drainage_score",
+    "previous_water_level_m"
+  ],
+  "feature_ranges": {
+    "drainage_score": [
+      1.0,
+      10.0
+    ],
+    "elevation_m": [
+      56.16,
+      105.4
+    ],
+    "previous_water_level_m": [
+      0.0,
+      2.6
+    ],
+    "rainfall_mm": [
+      15.04,
+      319.59
+    ]
+  },
+  "metrics": {
+    "mean_absolute_error": 0.8206,
+    "r2_score": 0.9965
+  },
+  "model_sha256": "2a1e42ae6dd8bb2e3f135d65e3865fde9c1209730842322396a05ef73a6f016e",
+  "trained_on": "synthetic_training_data",
+  "training_rows": 1200,
+  "xgboost_version": "3.4.1"
+}

@@ -7,7 +7,7 @@ from app.services.synthetic_data import generate_training_records, write_trainin
 
 def test_training_writes_a_loadable_model_artifact(tmp_path) -> None:
     dataset_path = tmp_path / "training.csv"
-    artifact_path = tmp_path / "flood_model.joblib"
+    artifact_path = tmp_path / "flood_model.json"
     write_training_dataset(dataset_path, generate_training_records(sample_count=400))
 
     result = train_baseline_model(dataset_path, artifact_path)
@@ -20,7 +20,7 @@ def test_training_writes_a_loadable_model_artifact(tmp_path) -> None:
 
 def test_loaded_model_returns_deterministic_prediction_shape(tmp_path) -> None:
     dataset_path = tmp_path / "training.csv"
-    artifact_path = tmp_path / "flood_model.joblib"
+    artifact_path = tmp_path / "flood_model.json"
     write_training_dataset(dataset_path, generate_training_records(sample_count=400))
     train_baseline_model(dataset_path, artifact_path)
     service = FloodPredictionService(artifact_path)
