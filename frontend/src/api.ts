@@ -1,7 +1,18 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
+const API_KEY = (import.meta.env.VITE_API_KEY as string | undefined) ?? "";
+export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
 function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
+}
+
+// A static SPA cannot keep a secret: VITE_API_KEY only deters casual use. Use real auth (e.g. an
+// authenticating gateway) for any non-demo deployment.
+function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (API_KEY) headers.set("X-API-Key", API_KEY);
+  return fetch(apiUrl(path), { ...init, headers });
 }
 
 import type {
@@ -40,57 +51,75 @@ async function requestError(response: Response, fallback: string): Promise<ApiEr
 }
 
 export async function fetchDistrict(): Promise<DistrictProfile> {
-  const response = await fetch(apiUrl("/api/v1/district"));
+  const response = await apiFetch("/api/v1/district");
   if (!response.ok) throw await requestError(response, "District data is unavailable.");
   return (await response.json()) as DistrictProfile;
 }
 
 export async function fetchSimulation(scenario: RainfallScenario): Promise<FloodSimulationResult> {
-  const response = await fetch(apiUrl(`/api/v1/simulate?scenario=${scenario}`));
+  const response = await apiFetch(`/api/v1/simulate?scenario=${encodeURIComponent(scenario)}`);
   if (!response.ok) throw await requestError(response, "Flood simulation could not be loaded.");
   return (await response.json()) as FloodSimulationResult;
 }
 
 export async function fetchRoute(startId: string, endId: string, scenario: string): Promise<RouteResponse> {
-  const response = await fetch(apiUrl(`/api/v1/route?start_id=${startId}&end_id=${endId}&scenario=${scenario}`));
+  const response = await apiFetch(`/api/v1/route?start_id=${encodeURIComponent(startId)}&end_id=${encodeURIComponent(endId)}&scenario=${encodeURIComponent(scenario)}`);
   if (!response.ok) throw await requestError(response, "A safe route could not be calculated.");
   return (await response.json()) as RouteResponse;
 }
 
+export interface DecisionOptions {
+  image?: File | null;
+  commit?: boolean;
+  signal?: AbortSignal;
+}
+
+/**
+ * The backend is authoritative: the client sends only the incident zone and the selected scenario.
+ * Zone elevation/drainage come from district data and rainfall/water level from the scenario preset,
+ * so the UI never fabricates environmental inputs.
+ */
 export async function fetchDecisionBundle(
   zoneId: string,
   scenario: RainfallScenario,
-  elevation: number,
-  drainage: number,
+  options: DecisionOptions = {},
 ): Promise<DecisionEngineResponse> {
   const formData = new FormData();
   formData.append("incident_zone_id", zoneId);
   formData.append("scenario", scenario);
+  if (options.commit) formData.append("commit", "true");
+  if (options.image) formData.append("file", options.image);
 
-  let rainfall = 50.0;
-  if (scenario === "severe") rainfall = 100.0;
-  if (scenario === "extreme") rainfall = 200.0;
-
-  formData.append("rainfall_mm", rainfall.toString());
-  formData.append("elevation_m", elevation.toString());
-  formData.append("drainage_score", drainage.toString());
-  formData.append("previous_water_level_m", "1.5");
-
-  const response = await fetch(apiUrl("/api/v1/decision-engine"), {
-    method: "POST",
-    body: formData,
-  });
-
+  const response = await apiFetch("/api/v1/decision-engine", { method: "POST", body: formData, signal: options.signal });
   if (!response.ok) throw await requestError(response, "Decision analysis could not be completed.");
   return (await response.json()) as DecisionEngineResponse;
 }
 
+export async function releaseDispatch(zoneId: string): Promise<void> {
+  const response = await apiFetch(`/api/v1/dispatch/${encodeURIComponent(zoneId)}`, { method: "DELETE" });
+  if (!response.ok && response.status !== 404) throw await requestError(response, "The team could not be released.");
+}
+
 export async function fetchReport(decision: DecisionEngineResponse): Promise<IncidentReportResponse> {
-  const response = await fetch(apiUrl("/api/v1/generate-report"), {
+  const response = await apiFetch("/api/v1/generate-report", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(decision),
   });
   if (!response.ok) throw await requestError(response, "The incident report could not be generated.");
   return (await response.json()) as IncidentReportResponse;
+}
+
+export const EXPECTED_API_VERSION = "0.2.0";
+
+/** Returns the backend version, or null when the backend is an old build that does not report one. */
+export async function fetchApiVersion(): Promise<string | null> {
+  try {
+    const response = await apiFetch("/api/v1/health");
+    if (!response.ok) return null;
+    const body = (await response.json()) as { version?: string };
+    return body.version ?? null;
+  } catch {
+    return null;
+  }
 }

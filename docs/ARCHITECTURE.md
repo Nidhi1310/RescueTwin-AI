@@ -75,7 +75,7 @@ It also returns confidence and an explanation. Training uses deterministic seeds
 
 ## Routing
 
-`routing_service.py` builds an in-memory weighted graph from district roads and virtual links between facilities/teams and their home zones. Dijkstra shortest-path search ignores road IDs blocked by the current flood simulation.
+`routing_service.py` builds an immutable, cached in-memory weighted graph (never rebuilt per request; parallel roads are kept as separate edges) from district roads and virtual links between facilities/teams and their home zones. Dijkstra shortest-path search ignores road IDs blocked by the current flood simulation.
 
 The same scenario therefore determines the road constraints used by operational routing.
 
@@ -111,7 +111,7 @@ An explicit UI scenario is passed as `scenario_override`, making the selected sc
 
 ## Report generation
 
-`report_generation.py` consumes the complete decision response rather than recomputing operational decisions. The report therefore reflects the incident zone, scenario, severity, blocked roads, and selected recommendations from the same decision bundle.
+`report_generation.py` consumes a complete decision response rather than recomputing operational decisions. `/generate-report` only accepts bundles carrying a valid HMAC signature issued by `/decision-engine` (`report_integrity.py`), so reports cannot be forged from client-edited data. The report therefore reflects the incident zone, scenario, severity, blocked roads, and selected recommendations from the same decision bundle.
 
 ## Request flow
 
@@ -151,3 +151,11 @@ Incident report
 ## Testing boundary
 
 The `tests/` directory exercises service behavior and API contracts, including regression coverage and the scenario-to-report integration path. See [DEMO.md](DEMO.md) for the operator workflow and [README.md](../README.md) for commands.
+
+## Safety and integrity mechanisms
+
+- **Server-authoritative inputs:** zone elevation/drainage come from district data; scenario presets supply rainfall/water level; contradictory inputs are rejected.
+- **ML influence:** the predicted severity sets `priority` and shifts scoring weights (team size and hospital distance rise with severity; weights always total 100).
+- **No silent dead ends:** when no road-accessible team/hospital/shelter exists the bundle flags `incident_isolated` and offers informational boat/air `fallback` options.
+- **Reservations:** `dispatch_ledger.py` is an atomic in-memory ledger; `commit=true` prevents double-booking a team.
+- **Hardening:** optional API key, per-client rate limit, 8 MB upload cap, audit log (`rescuetwin.audit`), checksummed JSON model artifact.

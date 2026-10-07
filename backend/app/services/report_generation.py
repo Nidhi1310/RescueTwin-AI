@@ -2,86 +2,101 @@
 
 from __future__ import annotations
 
-import textwrap
-
 from app.models.decision_engine import DecisionEngineResponse
 from app.models.report_generation import IncidentReportResponse
 
 
-def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReportResponse:
-    """Generate a deterministic incident report from decision-engine output."""
-    severity_score = decision.prediction.predicted_flood_severity
-    confidence = decision.prediction.confidence.upper()
-    scenario = decision.simulation.scenario.upper()
-    affected_zones_count = len(decision.simulation.affected_zones)
-    blocked_roads_count = len(decision.simulation.blocked_roads)
-    blocked_roads_list = ", ".join(r.road_id for r in decision.simulation.blocked_roads) or "None"
+def _section_team(decision: DecisionEngineResponse) -> list[str]:
+    rec = decision.team_allocation
+    if rec.status == "success" and rec.selected_team:
+        t = rec.selected_team
+        specs = ", ".join(t.specialties) if t.specialties else "None"
+        status = "COMMITTED to this incident" if decision.dispatch_committed else "proposed (not committed)"
+        return [
+            f"**{t.team_name}** (Specialty: {specs}) - {status}",
+            f"- Distance from incident: {t.route_distance_km} km",
+            f"- Estimated arrival: {t.estimated_travel_time_minutes} mins",
+            f"- Reasoning: {t.rationale}",
+        ]
+    lines = ["No team can be dispatched by road."]
+    if rec.fallback:
+        lines.append(f"- Fallback: {rec.fallback.advice}")
+    else:
+        lines.append(f"- {rec.explanation}")
+    return lines
 
-    damage_str = ""
+
+def _section_facility(rec, selected, name: str, noun: str, unit: str) -> list[str]:
+    if rec.status == "success" and selected:
+        return [
+            f"**{name}**",
+            f"- Distance: {selected.route_distance_km} km",
+            f"- Estimated travel: {selected.estimated_travel_time_minutes} mins",
+            f"- Capacity: {selected.available_capacity} {unit} available",
+            f"- Reasoning: {selected.rationale}",
+        ]
+    lines = [f"No {noun} reachable by a safe road."]
+    if rec.fallback:
+        lines.append(f"- Fallback: {rec.fallback.advice}")
+    return lines
+
+
+def generate_incident_report(decision: DecisionEngineResponse) -> IncidentReportResponse:
+    """Generate a deterministic incident report from a server-issued decision bundle."""
+
+    prediction = decision.prediction
+    sim = decision.simulation
+    blocked = ", ".join(r.road_id for r in sim.blocked_roads) or "None"
+    basis = (
+        "scenario preset inputs (not live sensor data)"
+        if decision.input_basis == "scenario_preset"
+        else "caller-supplied rainfall inputs"
+    )
+
+    lines: list[str] = [
+        "# RescueTwin AI Incident Report",
+        "",
+        f"**Incident Zone:** {decision.incident_zone_id}",
+        f"**Priority:** {decision.priority.upper()}",
+        f"**Scenario:** {sim.scenario.value.upper()}",
+        "",
+        "## Situation Summary",
+        f"Using {basis}, the baseline model predicts flood severity **{prediction.predicted_flood_severity}/100** "
+        f"({prediction.confidence.upper()} confidence"
+        + (f", typical error ±{prediction.expected_error_points} points" if prediction.expected_error_points is not None else "")
+        + f"). The district-wide scenario simulation scores **{sim.severity_score}/100**.",
+        f"- **Affected zones:** {len(sim.affected_zones)}",
+        f"- **Blocked roads:** {len(sim.blocked_roads)} ({blocked})",
+        f"- **Incident zone isolated by flooded roads:** {'YES' if decision.incident_isolated else 'No'}",
+        "",
+    ]
+
+    if decision.warnings:
+        lines += ["## Warnings", *[f"- {w}" for w in decision.warnings], ""]
+
     if decision.damage_assessment:
         dmg = decision.damage_assessment
-        damage_str = (
-            f"### Damage Assessment (from {dmg.filename})\n"
-            f"- **Level**: {dmg.damage_level.value.upper()}\n"
-            f"- **Confidence**: {dmg.confidence}%\n"
-            f"- **Rationale**: {dmg.rationale}\n\n"
-        )
+        lines += [
+            f"## Image Assessment (from {dmg.filename})",
+            f"- **Indicative level:** {dmg.damage_level.value.upper()}",
+            f"- **Estimated water-coloured coverage:** {dmg.water_coverage_pct}%",
+            f"- **Method:** {dmg.method} (no statistical confidence available)",
+            f"- **Rationale:** {dmg.rationale}",
+            f"- *{dmg.disclaimer}*",
+            "",
+        ]
 
-    hosp_rec = decision.hospital_recommendation
-    hosp_str = "No hospital available."
-    if hosp_rec.status == "success" and hosp_rec.selected_hospital:
-        h = hosp_rec.selected_hospital
-        hosp_str = (
-            f"**{h.hospital_name}**\n"
-            f"  - Distance: {h.route_distance_km} km\n"
-            f"  - Estimated Travel: {h.estimated_travel_time_minutes} mins\n"
-            f"  - Capacity: {h.available_capacity} available\n"
-            f"  - Reasoning: {h.rationale}\n"
-        )
+    hosp = decision.hospital_recommendation
+    shelt = decision.shelter_recommendation
+    lines += ["## Operational Recommendations", "", "### 1. Recommended Hospital"]
+    lines += _section_facility(
+        hosp, hosp.selected_hospital, hosp.selected_hospital.hospital_name if hosp.selected_hospital else "", "hospital", "beds"
+    )
+    lines += ["", "### 2. Recommended Shelter"]
+    lines += _section_facility(
+        shelt, shelt.selected_shelter, shelt.selected_shelter.shelter_name if shelt.selected_shelter else "", "shelter", "spots"
+    )
+    lines += ["", "### 3. Rescue Team Assignment", *_section_team(decision)]
+    lines += ["", "---", "*Generated by RescueTwin AI. Decision-support prototype built on a fictional district and synthetic data; not for real emergency use.*"]
 
-    shelt_rec = decision.shelter_recommendation
-    shelt_str = "No shelter available."
-    if shelt_rec.status == "success" and shelt_rec.selected_shelter:
-        s = shelt_rec.selected_shelter
-        shelt_str = (
-            f"**{s.shelter_name}**\n"
-            f"  - Distance: {s.route_distance_km} km\n"
-            f"  - Estimated Travel: {s.estimated_travel_time_minutes} mins\n"
-            f"  - Capacity: {s.available_capacity} spots\n"
-            f"  - Reasoning: {s.rationale}\n"
-        )
-
-    team_rec = decision.team_allocation
-    team_str = "No team available."
-    if team_rec.status == "success" and team_rec.selected_team:
-        t = team_rec.selected_team
-        specs = ", ".join(t.specialties) if t.specialties else "None"
-        team_str = (
-            f"**{t.team_name}** (Specialty: {specs})\n"
-            f"  - Distance from incident: {t.route_distance_km} km\n"
-            f"  - Estimated Arrival: {t.estimated_travel_time_minutes} mins\n"
-            f"  - Reasoning: {t.rationale}\n"
-        )
-
-    report = textwrap.dedent(f"""\
-        RescueTwin AI Incident Report
-        **Incident Zone:** {decision.incident_zone_id}
-
-        ## Situation Summary
-        Based on real-time metrics, the predicted flood severity is **{severity_score}/100** ({confidence} confidence), resulting in a **{scenario}** flood scenario.
-        - **Affected Zones:** {affected_zones_count}
-        - **Blocked Roads:** {blocked_roads_count} ({blocked_roads_list})
-
-        {damage_str}## Operational Recommendations
-
-        ### 1. Recommended Hospital
-        {hosp_str}
-        ### 2. Recommended Shelter
-        {shelt_str}
-        ### 3. Rescue Team Assignment
-        {team_str}
-        ---
-        *Report generated automatically by RescueTwin AI Decision Engine.*
-    """).strip()
-
-    return IncidentReportResponse(report_content=report)
+    return IncidentReportResponse(report_content="\n".join(lines))

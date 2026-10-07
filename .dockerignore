@@ -12,3 +12,8 @@ backend/__pycache__
 venv
 env
 *.log
+.env
+.env.*
+*.joblib
+tests
+docs

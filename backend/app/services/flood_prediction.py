@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import joblib
 import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
@@ -17,8 +19,12 @@ from app.models.prediction import FloodPredictionRequest, FloodPredictionRespons
 from app.services.synthetic_data import CSV_COLUMNS, FEATURE_COLUMNS, FloodTrainingRecord, validate_training_records
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATASET_PATH = Path("/app/data/flood_training.csv")
-DEFAULT_ARTIFACT_PATH = PROJECT_ROOT / "backend" / "artifacts" / "flood_severity_xgb.joblib"
+# Paths default to the repository layout and can be overridden (e.g. in Docker).
+DEFAULT_DATASET_PATH = Path(os.getenv("RESCUETWIN_DATASET_PATH", PROJECT_ROOT / "data" / "flood_training.csv"))
+DEFAULT_ARTIFACT_PATH = Path(
+    os.getenv("RESCUETWIN_ARTIFACT_PATH", PROJECT_ROOT / "backend" / "artifacts" / "flood_severity_xgb.json")
+)
+_EDGE_MARGIN = 0.05  # inputs within 5% of a training-range edge are treated as low-support
 _TRAIN_TEST_SPLIT_SEED = 42
 
 
@@ -63,6 +69,40 @@ def load_training_records(dataset_path: Path) -> tuple[FloodTrainingRecord, ...]
     return records
 
 
+def _meta_path(artifact_path: Path) -> Path:
+    return artifact_path.with_name(artifact_path.stem + ".meta.json")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _save_artifact(
+    model: XGBRegressor, artifact_path: Path, metrics: TrainingMetrics, features: np.ndarray, rows: int
+) -> None:
+    """Persist the model as XGBoost-native JSON plus an integrity-checked metadata file (no pickle)."""
+
+    import xgboost
+
+    if artifact_path.suffix != ".json":
+        raise ValueError("Model artifact path must end in .json (XGBoost native format).")
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    model.save_model(artifact_path)
+    metadata = {
+        "feature_columns": list(FEATURE_COLUMNS),
+        "metrics": {"mean_absolute_error": metrics.mean_absolute_error, "r2_score": metrics.r2_score},
+        "feature_ranges": {
+            column: [float(features[:, index].min()), float(features[:, index].max())]
+            for index, column in enumerate(FEATURE_COLUMNS)
+        },
+        "training_rows": rows,
+        "trained_on": "synthetic_training_data",
+        "xgboost_version": xgboost.__version__,
+        "model_sha256": _sha256(artifact_path),
+    }
+    _meta_path(artifact_path).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+
+
 def train_baseline_model(dataset_path: Path = DEFAULT_DATASET_PATH, artifact_path: Path = DEFAULT_ARTIFACT_PATH) -> TrainingResult:
     """Train a seeded XGBoost baseline and persist its model and metrics."""
 
@@ -88,15 +128,7 @@ def train_baseline_model(dataset_path: Path = DEFAULT_DATASET_PATH, artifact_pat
         mean_absolute_error=round(float(mean_absolute_error(test_targets, predictions)), 4),
         r2_score=round(float(r2_score(test_targets, predictions)), 4),
     )
-    artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {
-            "model": model,
-            "feature_columns": FEATURE_COLUMNS,
-            "metrics": {"mean_absolute_error": metrics.mean_absolute_error, "r2_score": metrics.r2_score},
-        },
-        artifact_path,
-    )
+    _save_artifact(model, artifact_path, metrics, features, len(records))
     return TrainingResult(
         artifact_path=artifact_path,
         training_rows=len(train_targets),
@@ -109,40 +141,80 @@ class FloodPredictionService:
     """A loaded model artifact that serves deterministic single-record predictions."""
 
     def __init__(self, artifact_path: Path = DEFAULT_ARTIFACT_PATH) -> None:
-        if not artifact_path.exists():
+        meta_path = _meta_path(artifact_path)
+        if not artifact_path.exists() or not meta_path.exists():
             raise FileNotFoundError(
-                f"Model artifact not found at {artifact_path}. Run ai/train_flood_model.py first."
+                f"Model artifact not found at {artifact_path}. Run `python ai/train_flood_model.py` first."
             )
-        artifact: dict[str, Any] = joblib.load(artifact_path)
-        if tuple(artifact.get("feature_columns", ())) != FEATURE_COLUMNS:
+        metadata: dict[str, Any] = json.loads(meta_path.read_text(encoding="utf-8"))
+        if tuple(metadata.get("feature_columns", ())) != FEATURE_COLUMNS:
             raise ValueError("Model artifact feature schema does not match the prediction service.")
-        self._model: XGBRegressor = artifact["model"]
-        self._metrics: dict[str, float] = artifact["metrics"]
+        if metadata.get("model_sha256") != _sha256(artifact_path):
+            raise ValueError("Model artifact failed its integrity check (checksum mismatch); refusing to load.")
+        model = XGBRegressor()
+        model.load_model(artifact_path)
+        self._model: XGBRegressor = model
+        self._metrics: dict[str, float] = metadata["metrics"]
+        self._ranges: dict[str, tuple[float, float]] = {
+            column: (bounds[0], bounds[1]) for column, bounds in metadata["feature_ranges"].items()
+        }
+
+    def _support(self, values: dict[str, float]) -> tuple[list[str], list[str]]:
+        """Return (outside training range, near the edge of it)."""
+
+        outside: list[str] = []
+        edge: list[str] = []
+        for column, value in values.items():
+            low, high = self._ranges[column]
+            margin = (high - low) * _EDGE_MARGIN
+            if value < low or value > high:
+                outside.append(column)
+            elif value < low + margin or value > high - margin:
+                edge.append(column)
+        return outside, edge
 
     def predict(self, request: FloodPredictionRequest) -> FloodPredictionResponse:
         """Return a stable score for a validated request."""
 
-        feature_row = np.array(
-            [[request.rainfall_mm, request.elevation_m, request.drainage_score, request.previous_water_level_m]],
-            dtype=float,
-        )
+        values = {
+            "rainfall_mm": request.rainfall_mm,
+            "elevation_m": request.elevation_m,
+            "drainage_score": float(request.drainage_score),
+            "previous_water_level_m": request.previous_water_level_m,
+        }
+        feature_row = np.array([[values[column] for column in FEATURE_COLUMNS]], dtype=float)
         prediction = round(float(np.clip(self._model.predict(feature_row)[0], 0.0, 100.0)), 2)
+
+        # Confidence reflects BOTH holdout skill and whether this input is inside the training data.
         r2 = self._metrics["r2_score"]
-        confidence: str = "high" if r2 >= 0.9 else "medium" if r2 >= 0.7 else "low"
+        levels = ("low", "medium", "high")
+        level = 2 if r2 >= 0.9 else 1 if r2 >= 0.7 else 0
+        outside, edge = self._support(values)
+        if outside:
+            level = 0
+        elif edge:
+            level = min(level, 1)
+        confidence = levels[level]
+        mae = float(self._metrics["mean_absolute_error"])
+
+        caveats = []
+        if outside:
+            caveats.append("inputs outside the training range (" + ", ".join(outside) + ")")
+        elif edge:
+            caveats.append("inputs near the edge of the training range (" + ", ".join(edge) + ")")
         explanation = (
-            f"Predicted flood severity is {prediction}/100 based on rainfall, elevation, "
-            f"drainage, and previous water level inputs. Model confidence is {confidence}."
+            f"Predicted flood severity is {prediction}/100 (typical holdout error ±{mae:.1f} points) "
+            f"from rainfall, elevation, drainage, and previous water level. Confidence is {confidence}"
+            + (f" because of {'; '.join(caveats)}" if caveats else "")
+            + ". The model is a baseline trained on synthetic data and is not a real-world forecast."
         )
         return FloodPredictionResponse(
             predicted_flood_severity=prediction,
             confidence=confidence,
             explanation=explanation,
-            input_factors={
-                "rainfall_mm": request.rainfall_mm,
-                "elevation_m": request.elevation_m,
-                "drainage_score": float(request.drainage_score),
-                "previous_water_level_m": request.previous_water_level_m,
-            },
+            input_factors=values,
+            expected_error_points=round(mae, 2),
+            out_of_support_inputs=outside + edge,
         )
 
 

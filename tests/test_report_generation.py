@@ -17,17 +17,15 @@ def test_generate_incident_report():
         district=district,
         incident_zone_id="zone-03",
         rainfall_mm=210.0,
-        elevation_m=65.0,
-        drainage_score=3,
         previous_water_level_m=2.0,
-        required_specialty="medical",
+        required_specialty="paramedic",
     )
     
     # Now test the endpoint
     with TestClient(app) as client:
         # Pydantic's dict() or model_dump() handles nested JSON serialization 
         # But we must convert it to a serializable dict (fastapi client json=... does this)
-        response = client.post("/api/v1/generate-report", json=decision.model_dump())
+        response = client.post("/api/v1/generate-report", json=decision.model_dump(mode="json"))
         
         assert response.status_code == 200
         data = response.json()

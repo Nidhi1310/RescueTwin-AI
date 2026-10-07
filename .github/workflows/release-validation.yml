@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - day-30-final-polish
   pull_request:
     branches:
       - main
@@ -21,9 +20,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
 
       - name: Install backend dependencies
-        run: python -m pip install -r backend/requirements.txt
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Verify the documented training command works from a clean checkout
+        run: python ai/train_flood_model.py --artifact "$RUNNER_TEMP/model.json"
 
       - name: Run backend tests
         env:
@@ -37,7 +41,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build frontend
+      - name: Type-check and build frontend
         working-directory: frontend
         run: npm ci && npm run build
 

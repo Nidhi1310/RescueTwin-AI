@@ -21,3 +21,10 @@ class FloodPredictionResponse(BaseModel):
     confidence: Literal["low", "medium", "high"]
     explanation: str
     input_factors: dict[str, float]
+    expected_error_points: float | None = Field(
+        default=None, description="Holdout mean absolute error of the model, in severity points."
+    )
+    out_of_support_inputs: list[str] = Field(
+        default_factory=list, description="Inputs outside (or at the edge of) the training data range."
+    )
+    model_basis: str = "synthetic_training_data"

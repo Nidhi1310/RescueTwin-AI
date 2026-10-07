@@ -25,3 +25,8 @@ env/
 
 # Environment variables
 .env
+# Secrets / local config
+.env.*
+
+# Legacy pickled model artifacts (the model is stored as XGBoost-native JSON)
+*.joblib

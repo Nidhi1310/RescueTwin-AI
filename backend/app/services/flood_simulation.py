@@ -27,6 +27,31 @@ SCENARIO_CONFIGURATIONS: dict[RainfallScenario, ScenarioConfiguration] = {
 _ELEVATION_REFERENCE_M = 100.0
 
 
+@dataclass(frozen=True)
+class ScenarioPreset:
+    """Representative environmental inputs for a scenario (NOT live sensor data)."""
+
+    rainfall_mm: float
+    previous_water_level_m: float
+
+
+SCENARIO_PRESETS: dict[RainfallScenario, ScenarioPreset] = {
+    RainfallScenario.MODERATE: ScenarioPreset(60.0, 0.38),
+    RainfallScenario.SEVERE: ScenarioPreset(150.0, 0.94),
+    RainfallScenario.EXTREME: ScenarioPreset(260.0, 1.63),
+}
+
+
+def scenario_for_rainfall(rainfall_mm: float) -> RainfallScenario:
+    """Deterministic rainfall bands shared by the API and the decision engine."""
+
+    if rainfall_mm >= 200:
+        return RainfallScenario.EXTREME
+    if rainfall_mm >= 100:
+        return RainfallScenario.SEVERE
+    return RainfallScenario.MODERATE
+
+
 def calculate_zone_severity(zone: FloodZone, rainfall_intensity: float) -> float:
     """Calculate a repeatable 0-100 flood score for one zone.
 
@@ -44,12 +69,13 @@ def simulate_flood(district: DistrictProfile, scenario: RainfallScenario) -> Flo
     """Generate an entirely deterministic flood result for a district scenario."""
 
     configuration = SCENARIO_CONFIGURATIONS[scenario]
+    scores = {zone.id: calculate_zone_severity(zone, configuration.rainfall_intensity) for zone in district.zones}
     zone_impacts = tuple(
         ZoneFloodImpact(
             zone_id=zone.id,
             zone_name=zone.name,
-            severity_score=calculate_zone_severity(zone, configuration.rainfall_intensity),
-            affected=calculate_zone_severity(zone, configuration.rainfall_intensity) >= configuration.affected_threshold,
+            severity_score=scores[zone.id],
+            affected=scores[zone.id] >= configuration.affected_threshold,
         )
         for zone in district.zones
     )

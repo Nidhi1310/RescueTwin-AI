@@ -2,13 +2,24 @@ services:
   - type: web
     name: rescuetwin-api
     runtime: docker
+    # NOTE: the free plan spins the service down when idle (first request can take ~30-60 s).
+    # Use a paid plan, or an external uptime pinger, for anything beyond a demo.
     plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     healthCheckPath: /api/v1/health
     envVars:
+      # Set to the deployed frontend URL (e.g. https://rescuetwin-frontend.onrender.com). Never "*".
       - key: RESCUETWIN_CORS_ORIGINS
-        value: "*"
+        sync: false
+      # Stable HMAC key so issued decision bundles verify across restarts/instances.
+      - key: RESCUETWIN_SIGNING_KEY
+        generateValue: true
+      # Optional: require X-API-Key on all endpoints except /health.
+      - key: RESCUETWIN_API_KEY
+        sync: false
+      - key: RESCUETWIN_TRUST_PROXY
+        value: "1"
 
   - type: web
     name: rescuetwin-frontend
@@ -22,6 +33,13 @@ services:
           name: rescuetwin-api
           type: web
           envVarKey: RENDER_EXTERNAL_URL
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
     routes:
       - type: rewrite
         source: /*

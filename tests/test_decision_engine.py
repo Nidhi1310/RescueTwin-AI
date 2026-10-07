@@ -13,10 +13,10 @@ def test_decision_engine_bundle_consistency():
         payload = {
             "incident_zone_id": "zone-01",
             "rainfall_mm": 200.0,
-            "elevation_m": 85.0,
+            "elevation_m": 72.0,
             "drainage_score": 3,
             "previous_water_level_m": 1.5,
-            "required_specialty": "water_rescue",
+            "required_specialty": "boat_rescue",
         }
         response = client.post("/api/v1/decision-engine", data=payload)
         
@@ -55,20 +55,20 @@ def test_decision_engine_bundle_consistency():
             assert data["team_allocation"]["scenario"].lower() == expected_scenario
             assert data["team_route"] is not None
             # The required specialty was requested
-            assert data["team_allocation"]["required_specialty"] == "water_rescue"
+            assert data["team_allocation"]["required_specialty"] == "boat_rescue"
 
 
 def test_decision_engine_with_image_upload():
     """Verify that uploading an image successfully populates the damage assessment field."""
     with TestClient(app) as client:
-        # Valid dummy jpeg
-        dummy_jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        from tests._images import MUDDY, make_image
+        dummy_jpeg = make_image(MUDDY, "JPEG")
         
         data = {
             "incident_zone_id": "zone-02",
             "rainfall_mm": 150.0,
-            "elevation_m": 70.0,
-            "drainage_score": 5,
+            "elevation_m": 68.0,
+            "drainage_score": 2,
             "previous_water_level_m": 1.0,
         }
         
