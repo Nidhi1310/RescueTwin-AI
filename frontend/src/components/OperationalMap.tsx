@@ -258,8 +258,10 @@ export function OperationalMap({
       <div className="relative">
         <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[520px] w-full tactical-map">
           <TileLayer
-            attribution='&copy; OpenStreetMap contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            subdomains="abcd"
+            maxZoom={20}
           />
           <FitDistrict bounds={bounds} />
           <MapControls />
