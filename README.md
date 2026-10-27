@@ -35,7 +35,7 @@ RescueTwin AI is a deterministic, fictional flood-response decision-support syst
 │   │   ├── api/       # HTTP routes
 │   │   ├── models/    # typed API/domain contracts
 │   │   └── services/  # simulation, prediction and decision logic
-│   └── artifacts/     # persisted model artifact
+│   └── artifacts/     # generated model artifact (ignored by Git)
 ├── data/               # deterministic synthetic training dataset generator/data
 ├── docs/               # architecture and demo documentation
 ├── frontend/
@@ -67,6 +67,9 @@ From the repository root:
 ```powershell
 cd backend
 python -m pip install -r requirements.txt
+cd ..
+python ai/train_flood_model.py
+cd backend
 python -m uvicorn app.main:app --reload
 ```
 
@@ -74,6 +77,7 @@ The API is then available at:
 
 - `http://127.0.0.1:8000/docs` — interactive OpenAPI documentation
 - `http://127.0.0.1:8000/api/v1/health` — health check
+- `http://127.0.0.1:8000/api/v1/ready` — model-backed readiness check
 - `http://127.0.0.1:8000/api/v1/district` — fictional district metadata
 
 ## Model artifact
@@ -86,7 +90,7 @@ If it needs to be regenerated, from the repository root run:
 python ai/train_flood_model.py
 ```
 
-The training pipeline uses a seeded split and model configuration so the baseline remains reproducible.
+The training pipeline uses repository-relative paths, so the same command works on Windows, Linux, and in Docker. It generates the deterministic dataset if the CSV is missing, then writes the ignored artifact.
 
 To regenerate the deterministic synthetic dataset:
 
@@ -119,6 +123,7 @@ If PowerShell blocks `npm.ps1`, use `npm.cmd` as shown above.
 The current backend exposes these operational paths under `/api/v1`:
 
 - `GET /health`
+- `GET /ready`
 - `GET /district`
 - `GET /simulate`
 - `GET /route`
@@ -142,7 +147,7 @@ python -m pytest tests -q
 
 The suite covers unit behavior, API contracts, regression behavior, recommendation/routing logic, report generation, and the Day 27 scenario-to-report integration flow.
 
-A successful run should report all tests passing. Warnings from third-party dependencies do not represent test failures; investigate them separately if they become errors.
+A successful run should report all tests passing. CI bootstraps the generated model artifact before running tests. Warnings from third-party dependencies do not represent test failures; investigate them separately if they become errors.
 
 ## End-to-end demo flow
 
@@ -222,6 +227,8 @@ Run:
 python ai/train_flood_model.py
 ```
 
+The API keeps `/health` as a liveness check. Use `/ready` to verify that the model artifact is loadable. Prediction and decision-engine requests return HTTP 503 with a remediation message when the artifact is missing or invalid.
+
 ### Frontend starts but API requests fail
 
 Confirm the backend is running on port 8000 and that the frontend is being served through Vite with the expected `/api` proxy.
@@ -232,3 +239,9 @@ Confirm the backend is running on port 8000 and that the frontend is being serve
 - **Backend authoritative:** operational decisions originate from the backend decision engine.
 - **Explainable:** recommendation responses expose rationale and contributing factors.
 - **Narrow scope:** the project is a decision-support prototype, not a live emergency-management system.
+
+## Model limitations and deployment contract
+
+The model is trained only on fictional synthetic data. Its 80/20 random holdout score is not a leakage-resistant, grouped, temporal, or real-world validation result. The `confidence` field is a heuristic category derived from holdout R²; the local API does not provide conformal or calibrated prediction intervals. The simulator uses three deterministic rainfall scenarios, and routing uses deterministic blocked-road thresholds; Monte Carlo road risk, graph-derived ML features, multi-district training, and multi-incident dispatch are not implemented in this repository.
+
+The checked-out repository is the authoritative contract for local development. The previously observed deployed service exposed additional `/dispatch` and `/scenarios` endpoints and extra prediction fields that are not represented here; those production-only behaviors were not copied without a source revision or compatibility requirements.

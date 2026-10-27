@@ -14,12 +14,24 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
-from app.services.synthetic_data import CSV_COLUMNS, FEATURE_COLUMNS, FloodTrainingRecord, validate_training_records
+from app.services.synthetic_data import (
+    CSV_COLUMNS,
+    FEATURE_COLUMNS,
+    FloodTrainingRecord,
+    create_training_dataset,
+    validate_training_records,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATASET_PATH = Path("/app/data/flood_training.csv")
+# Resolve paths from the repository root so the same code works from a local
+# Windows/Linux checkout and inside the Docker image (whose root is /app).
+DEFAULT_DATASET_PATH = PROJECT_ROOT / "data" / "flood_training.csv"
 DEFAULT_ARTIFACT_PATH = PROJECT_ROOT / "backend" / "artifacts" / "flood_severity_xgb.joblib"
 _TRAIN_TEST_SPLIT_SEED = 42
+
+
+class ModelArtifactError(RuntimeError):
+    """Raised when a persisted model exists but cannot be safely loaded."""
 
 
 @dataclass(frozen=True)
@@ -105,17 +117,51 @@ def train_baseline_model(dataset_path: Path = DEFAULT_DATASET_PATH, artifact_pat
     )
 
 
+def bootstrap_model(
+    dataset_path: Path = DEFAULT_DATASET_PATH,
+    artifact_path: Path = DEFAULT_ARTIFACT_PATH,
+) -> TrainingResult:
+    """Generate missing training data and build a reproducible model artifact.
+
+    The checked-in CSV is used when present. Generating it on demand keeps a
+    clean checkout bootstrappable without requiring undocumented local files.
+    """
+
+    if not dataset_path.exists():
+        create_training_dataset(dataset_path)
+    return train_baseline_model(dataset_path, artifact_path)
+
+
+def check_model_readiness(artifact_path: Path | None = None) -> tuple[bool, str]:
+    """Validate that the persisted model exists and can be loaded."""
+
+    resolved_artifact_path = artifact_path or DEFAULT_ARTIFACT_PATH
+    try:
+        FloodPredictionService(resolved_artifact_path)
+    except FileNotFoundError:
+        return False, f"Model artifact is missing at {resolved_artifact_path}. Run 'python ai/train_flood_model.py'."
+    except (ModelArtifactError, OSError, ValueError, KeyError, TypeError) as exc:
+        return False, f"Model artifact is invalid or unreadable: {exc}"
+    return True, "Model artifact loaded successfully."
+
+
 class FloodPredictionService:
     """A loaded model artifact that serves deterministic single-record predictions."""
 
-    def __init__(self, artifact_path: Path = DEFAULT_ARTIFACT_PATH) -> None:
+    def __init__(self, artifact_path: Path | None = None) -> None:
+        artifact_path = artifact_path or DEFAULT_ARTIFACT_PATH
         if not artifact_path.exists():
             raise FileNotFoundError(
                 f"Model artifact not found at {artifact_path}. Run ai/train_flood_model.py first."
             )
-        artifact: dict[str, Any] = joblib.load(artifact_path)
+        try:
+            artifact: dict[str, Any] = joblib.load(artifact_path)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            raise ModelArtifactError(f"Could not load model artifact at {artifact_path}: {exc}") from exc
         if tuple(artifact.get("feature_columns", ())) != FEATURE_COLUMNS:
-            raise ValueError("Model artifact feature schema does not match the prediction service.")
+            raise ModelArtifactError("Model artifact feature schema does not match the prediction service.")
         self._model: XGBRegressor = artifact["model"]
         self._metrics: dict[str, float] = artifact["metrics"]
 
@@ -131,7 +177,8 @@ class FloodPredictionService:
         confidence: str = "high" if r2 >= 0.9 else "medium" if r2 >= 0.7 else "low"
         explanation = (
             f"Predicted flood severity is {prediction}/100 based on rainfall, elevation, "
-            f"drainage, and previous water level inputs. Model confidence is {confidence}."
+            f"drainage, and previous water level inputs. The heuristic confidence category is "
+            f"{confidence}; it is not a calibrated prediction interval."
         )
         return FloodPredictionResponse(
             predicted_flood_severity=prediction,

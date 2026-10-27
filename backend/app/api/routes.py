@@ -19,7 +19,7 @@ from app.services.decision_engine import generate_decision_bundle
 from app.services.report_generation import generate_incident_report
 from app.services.district_service import get_district
 from app.services.flood_simulation import simulate_flood
-from app.services.flood_prediction import get_prediction_service
+from app.services.flood_prediction import ModelArtifactError, check_model_readiness, get_prediction_service
 from app.services.hospital_recommendation import recommend_hospital
 from app.services.routing_service import find_safe_route
 from app.services.team_allocation import allocate_team
@@ -30,6 +30,13 @@ router = APIRouter()
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     service: str
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ready"]
+    service: str
+    model_artifact: str
+    message: str
 
 
 def _ensure_zone(zone_id: str) -> None:
@@ -55,6 +62,21 @@ def _ensure_location(location_id: str) -> None:
 @router.get("/health", response_model=HealthResponse, tags=["system"])
 def health_check() -> HealthResponse:
     return HealthResponse(status="ok", service="rescuetwin-api")
+
+
+@router.get("/ready", response_model=ReadinessResponse, tags=["system"])
+def readiness_check() -> ReadinessResponse:
+    """Report whether the API can serve model-backed requests."""
+
+    ready, message = check_model_readiness()
+    if not ready:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "message": message})
+    return ReadinessResponse(
+        status="ready",
+        service="rescuetwin-api",
+        model_artifact="loaded",
+        message=message,
+    )
 
 
 @router.get("/district", response_model=DistrictProfile, tags=["district"])
@@ -104,7 +126,13 @@ def recommend_team_for_incident(
 
 @router.post("/predict", response_model=FloodPredictionResponse, tags=["prediction"])
 def predict_flood_severity(request: FloodPredictionRequest) -> FloodPredictionResponse:
-    return get_prediction_service().predict(request)
+    try:
+        return get_prediction_service().predict(request)
+    except (FileNotFoundError, ModelArtifactError, OSError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Flood prediction is unavailable because the model artifact is not ready: {exc}",
+        ) from exc
 
 
 @router.post("/assess-damage", response_model=DamageAssessmentResponse, tags=["damage"])
@@ -139,18 +167,24 @@ async def decision_engine(
         if not image_bytes:
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
         image_filename = file.filename
-    return generate_decision_bundle(
-        district=get_district(),
-        incident_zone_id=incident_zone_id,
-        rainfall_mm=rainfall_mm,
-        elevation_m=elevation_m,
-        drainage_score=drainage_score,
-        previous_water_level_m=previous_water_level_m,
-        required_specialty=required_specialty,
-        scenario_override=scenario,
-        image_bytes=image_bytes,
-        image_filename=image_filename,
-    )
+    try:
+        return generate_decision_bundle(
+            district=get_district(),
+            incident_zone_id=incident_zone_id,
+            rainfall_mm=rainfall_mm,
+            elevation_m=elevation_m,
+            drainage_score=drainage_score,
+            previous_water_level_m=previous_water_level_m,
+            required_specialty=required_specialty,
+            scenario_override=scenario,
+            image_bytes=image_bytes,
+            image_filename=image_filename,
+        )
+    except (FileNotFoundError, ModelArtifactError, OSError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Decision analysis is unavailable because the model artifact is not ready: {exc}",
+        ) from exc
 
 
 @router.post("/generate-report", response_model=IncidentReportResponse, tags=["report"])
