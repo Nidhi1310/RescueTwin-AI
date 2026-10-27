@@ -14,7 +14,7 @@ from app.services.synthetic_data import generate_training_records, write_trainin
 
 def test_training_writes_a_loadable_model_artifact(tmp_path) -> None:
     dataset_path = tmp_path / "training.csv"
-    artifact_path = tmp_path / "flood_model.joblib"
+    artifact_path = tmp_path / "flood_model.json"
     write_training_dataset(dataset_path, generate_training_records(sample_count=400))
 
     result = train_baseline_model(dataset_path, artifact_path)
@@ -27,7 +27,7 @@ def test_training_writes_a_loadable_model_artifact(tmp_path) -> None:
 
 def test_loaded_model_returns_deterministic_prediction_shape(tmp_path) -> None:
     dataset_path = tmp_path / "training.csv"
-    artifact_path = tmp_path / "flood_model.joblib"
+    artifact_path = tmp_path / "flood_model.json"
     write_training_dataset(dataset_path, generate_training_records(sample_count=400))
     train_baseline_model(dataset_path, artifact_path)
     service = FloodPredictionService(artifact_path)
@@ -49,13 +49,13 @@ def test_loaded_model_returns_deterministic_prediction_shape(tmp_path) -> None:
 def test_default_paths_are_portable_repository_paths() -> None:
     assert DEFAULT_DATASET_PATH.name == "flood_training.csv"
     assert DEFAULT_DATASET_PATH.parent.name == "data"
-    assert DEFAULT_ARTIFACT_PATH.name == "flood_severity_xgb.joblib"
+    assert DEFAULT_ARTIFACT_PATH.name == "flood_severity_xgb.json"
     assert DEFAULT_ARTIFACT_PATH.parent.name == "artifacts"
 
 
 def test_bootstrap_generates_dataset_and_artifact_when_missing(tmp_path) -> None:
     dataset_path = tmp_path / "generated" / "flood_training.csv"
-    artifact_path = tmp_path / "generated" / "model.joblib"
+    artifact_path = tmp_path / "generated" / "model.json"
 
     result = bootstrap_model(dataset_path, artifact_path)
 
@@ -73,7 +73,7 @@ def test_bootstrap_generates_dataset_and_artifact_when_missing(tmp_path) -> None
 
 
 def test_readiness_reports_missing_artifact(tmp_path) -> None:
-    ready, message = check_model_readiness(tmp_path / "missing.joblib")
+    ready, message = check_model_readiness(tmp_path / "missing.json")
 
     assert not ready
     assert "Run 'python ai/train_flood_model.py'" in message

@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.reasoning import ReasoningFactor
+from app.models.reasoning import FallbackOption, ReasoningFactor
 
 
 class HospitalCandidate(BaseModel):
@@ -42,3 +42,5 @@ class HospitalRecommendationResponse(BaseModel):
     ranked_hospitals: list[HospitalCandidate]
     excluded_hospitals: list[HospitalExclusion]
     explanation: str = Field(min_length=1)
+    required_service: str | None = None
+    fallback: FallbackOption | None = None

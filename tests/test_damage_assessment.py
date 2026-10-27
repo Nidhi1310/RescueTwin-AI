@@ -1,67 +1,64 @@
-"""Tests for the image-based damage assessment fallback classifier."""
+"""Tests for image validation and the colour-coverage damage heuristic."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.damage_assessment import DamageLevel
+from app.services.damage_assessment import assess_image_damage, sanitize_filename
+from tests._images import BLUE, GRAY, GREEN, MUDDY, make_image
 
 
-def test_assess_image_damage_valid_jpeg():
-    """Verify that uploading a valid dummy JPEG returns a deterministic valid response."""
-    # Create a minimal valid JPEG header
-    dummy_jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
-    
+def _post(client, name, content, mime="image/png"):
+    return client.post("/api/v1/assess-damage", files={"file": (name, content, mime)})
+
+
+def test_valid_png_and_jpeg_are_assessed_without_fake_confidence():
     with TestClient(app) as client:
-        files = {"file": ("incident1.jpg", dummy_jpeg, "image/jpeg")}
-        response = client.post("/api/v1/assess-damage", files=files)
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["filename"] == "incident1.jpg"
-        assert data["damage_level"] in [level.value for level in DamageLevel]
-        assert 72.0 <= data["confidence"] <= 100.0
-        assert len(data["rationale"]) > 0
+        for name, fmt, mime in (("incident1.jpg", "JPEG", "image/jpeg"), ("incident2.png", "PNG", "image/png")):
+            response = _post(client, name, make_image(MUDDY, fmt), mime)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["filename"] == name
+            assert data["damage_level"] in [level.value for level in DamageLevel]
+            assert data["confidence"] is None  # no fabricated statistical confidence
+            assert data["method"] == "heuristic_water_color_coverage"
+            assert "disclaimer" in data
 
 
-def test_assess_image_damage_valid_png():
-    """Verify that uploading a valid dummy PNG returns a deterministic valid response."""
-    # Minimal valid PNG header
-    dummy_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
-    
+def test_result_depends_on_image_content_not_on_bytes_hash():
+    wet = assess_image_damage(make_image(MUDDY), "a.png")
+    blue = assess_image_damage(make_image(BLUE), "b.png")
+    dry_green = assess_image_damage(make_image(GREEN), "c.png")
+    dry_gray = assess_image_damage(make_image(GRAY), "d.png")
+    assert wet.damage_level == DamageLevel.CATASTROPHIC and wet.water_coverage_pct == 100.0
+    assert blue.damage_level == DamageLevel.CATASTROPHIC
+    assert dry_green.damage_level == DamageLevel.NONE and dry_gray.damage_level == DamageLevel.NONE
+    # Same content re-encoded differently gives the same verdict (a byte hash would not).
+    assert assess_image_damage(make_image(MUDDY, "PNG"), "x.png").damage_level == \
+        assess_image_damage(make_image(MUDDY, "JPEG"), "x.jpg").damage_level
+
+
+def test_non_images_are_rejected_even_with_image_extension_or_magic_bytes():
     with TestClient(app) as client:
-        files = {"file": ("incident2.png", dummy_png, "image/png")}
-        response = client.post("/api/v1/assess-damage", files=files)
-        
-        assert response.status_code == 200
-        data = response.json()
-        
-        assert data["filename"] == "incident2.png"
-        assert data["damage_level"] in [level.value for level in DamageLevel]
+        assert _post(client, "evil.jpg", b"this is plain text, not an image", "image/jpeg").status_code == 400
+        assert _post(client, "x.exe", b"\xff\xd8 fake jpeg magic bytes only").status_code == 400
+        assert _post(client, "document.txt", b"This is not an image file.", "text/plain").status_code == 400
 
 
-def test_assess_image_damage_unsupported_input():
-    """Verify that uploading a non-image file results in a 400 Bad Request."""
-    dummy_text = b"This is not an image file. It is a text file."
-    
+def test_empty_file_is_rejected():
     with TestClient(app) as client:
-        files = {"file": ("document.txt", dummy_text, "text/plain")}
-        response = client.post("/api/v1/assess-damage", files=files)
-        
+        response = _post(client, "empty.jpg", b"", "image/jpeg")
         assert response.status_code == 400
-        data = response.json()
-        assert "Unsupported file format" in data["detail"]
+        assert "Empty file uploaded" in response.json()["detail"]
 
 
-def test_assess_image_damage_empty_file():
-    """Verify that uploading an empty file results in a 400 Bad Request."""
-    dummy_empty = b""
-    
+def test_oversized_upload_is_rejected_with_413():
     with TestClient(app) as client:
-        files = {"file": ("empty.jpg", dummy_empty, "image/jpeg")}
-        response = client.post("/api/v1/assess-damage", files=files)
-        
-        assert response.status_code == 400
-        data = response.json()
-        assert "Empty file uploaded" in data["detail"]
+        response = _post(client, "big.jpg", b"\xff\xd8" + b"0" * (9 * 1024 * 1024), "image/jpeg")
+        assert response.status_code == 413
+
+
+def test_filename_is_sanitized_before_being_echoed():
+    assert sanitize_filename("../../etc/passwd") == "passwd"
+    cleaned = sanitize_filename("<script>alert(1)</script>.png")
+    assert "<" not in cleaned and ">" not in cleaned and "(" not in cleaned

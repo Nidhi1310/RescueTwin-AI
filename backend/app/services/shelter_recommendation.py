@@ -9,12 +9,42 @@ from app.models.shelter_recommendation import (
     ShelterExclusion,
     ShelterRecommendationResponse,
 )
+from app.models.reasoning import FallbackOption
 from app.models.simulation import RainfallScenario
 from app.services.flood_simulation import simulate_flood
-from app.services.routing_service import build_routing_graph, find_safe_route
+from app.services.routing_service import find_safe_route, location_of, straight_line_km
 
 _MAX_SAFE_SHELTER_FLOOD_RISK = 50.0
 _ESTIMATED_EVAC_SPEED_KPH = 15.0
+
+
+def _fallback_shelter(
+    district: DistrictProfile, start_id: str, flood_risk_by_zone: dict[str, float]
+) -> FallbackOption | None:
+    """Safest shelter with free space, ignoring road closures (informational, for boat/air evacuation)."""
+
+    origin = location_of(start_id, district)
+    if origin is None:
+        return None
+    options = [s for s in district.shelters if s.capacity - s.current_occupancy > 0]
+    if not options:
+        return None
+    shelter = min(
+        options,
+        key=lambda s: (flood_risk_by_zone.get(s.zone_id, 0.0), straight_line_km(origin, s.location)),
+    )
+    distance = straight_line_km(origin, shelter.location)
+    return FallbackOption(
+        target_id=shelter.id,
+        target_name=shelter.name,
+        straight_line_km=round(distance, 2),
+        advice=(
+            f"No shelter is reachable by a safe road. {shelter.name} has the lowest flood risk "
+            f"({flood_risk_by_zone.get(shelter.zone_id, 0.0):.0f}/100) with "
+            f"{shelter.capacity - shelter.current_occupancy} free spaces, {distance:.1f} km away in a straight "
+            "line. Plan boat/air evacuation; this is NOT a routed path."
+        ),
+    )
 
 
 def recommend_shelter(
@@ -24,7 +54,6 @@ def recommend_shelter(
 ) -> ShelterRecommendationResponse:
     """Rank reachable shelters for an evacuation using explicit suitability factors."""
 
-    build_routing_graph(district)
     simulation = simulate_flood(district, scenario)
     flood_risk_by_zone = {impact.zone_id: impact.severity_score for impact in simulation.zone_impacts}
     blocked_road_ids = {road.road_id for road in simulation.blocked_roads}
@@ -61,7 +90,7 @@ def recommend_shelter(
             )
             continue
 
-        route, route_distance_km = find_safe_route(start_id, facility.id, blocked_road_ids)
+        route, route_distance_km = find_safe_route(start_id, facility.id, blocked_road_ids, district)
         if not route:
             exclusions.append(
                 ShelterExclusion(
@@ -99,7 +128,6 @@ def recommend_shelter(
                 "contribution": round(distance_score, 1),
             },
         ]
-        top_factor = max(reasoning_factors, key=lambda item: item["contribution"])
 
         candidates.append(
             ShelterCandidate(
@@ -125,6 +153,7 @@ def recommend_shelter(
     )
 
     if not ranked_shelters:
+        fallback = _fallback_shelter(district, start_id, flood_risk_by_zone)
         return ShelterRecommendationResponse(
             status="no_suitable_shelter",
             start_id=start_id,
@@ -132,10 +161,15 @@ def recommend_shelter(
             selected_shelter=None,
             ranked_shelters=[],
             excluded_shelters=exclusions,
-            explanation="No shelter satisfies the current capacity, flood-risk, and safe-route constraints.",
+            explanation=(
+                "No shelter satisfies the current capacity, flood-risk, and safe-route constraints."
+                + (" " + fallback.advice if fallback else " Request external evacuation assets.")
+            ),
+            fallback=fallback,
         )
 
     selected = ranked_shelters[0]
+    top_factor = max(selected.reasoning_factors, key=lambda factor: factor.contribution)
     return ShelterRecommendationResponse(
         status="success",
         start_id=start_id,
@@ -146,6 +180,6 @@ def recommend_shelter(
         explanation=(
             f"{selected.shelter_name} is the highest-ranked suitable shelter with a "
             f"{selected.suitability_score:.1f}/100 suitability score. The strongest contributing "
-            f"factor is {top_factor['factor'].lower()} ({top_factor['value']})."
+            f"factor is {top_factor.factor.lower()} ({top_factor.value})."
         ),
     )

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchDistrict } from "./api";
+import { EXPECTED_API_VERSION, fetchApiVersion, fetchDistrict } from "./api";
 import { DecisionController } from "./components/DecisionController";
 import type { DistrictProfile } from "./types";
 
@@ -15,6 +15,9 @@ function ErrorState({ message }: { message: string }) {
 export default function App() {
   const [district, setDistrict] = useState<DistrictProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [apiVersion, setApiVersion] = useState<string | null | undefined>(undefined);
+  useEffect(() => { fetchApiVersion().then(setApiVersion); }, []);
 
   useEffect(() => {
     fetchDistrict().then(setDistrict).catch((requestError: unknown) => {
@@ -36,6 +39,12 @@ export default function App() {
 
   return (
     <main className="min-h-screen bg-ink text-slate-100">
+      {apiVersion !== undefined && apiVersion !== EXPECTED_API_VERSION && (
+        <div role="alert" className="bg-[#ff5964] px-4 py-3 text-center text-sm font-bold text-white">
+          OLD BACKEND DETECTED (API version: {apiVersion ?? "none"}, expected {EXPECTED_API_VERSION}). An old server is still running on port 8000.
+          Close it and start the backend from this folder: cd backend, then python -m uvicorn app.main:app --reload
+        </div>
+      )}
       <header className="border-b border-[#16304a] bg-[#07111f]/96 px-6 py-4 backdrop-blur-xl lg:px-10">
         <div className="mx-auto flex max-w-[1365px] items-center justify-between gap-4">
           <div className="flex items-center gap-3">

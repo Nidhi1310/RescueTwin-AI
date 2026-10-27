@@ -16,9 +16,16 @@ class DamageLevel(str, Enum):
 
 
 class DamageAssessmentResponse(BaseModel):
-    """Response containing the deterministic classification of an incident image."""
+    """An *indicative* colour-based estimate of floodwater coverage in an image.
+
+    This is a prototype heuristic, not a trained model and not a structural
+    assessment, so no statistical confidence is reported.
+    """
 
     filename: str
     damage_level: DamageLevel
-    confidence: float = Field(ge=0, le=100)
+    confidence: float | None = Field(default=None, ge=0, le=100)
     rationale: str
+    method: str = "heuristic_water_color_coverage"
+    water_coverage_pct: float = Field(default=0.0, ge=0, le=100)
+    disclaimer: str = "Indicative colour heuristic only. Not a structural or safety assessment; verify on site."

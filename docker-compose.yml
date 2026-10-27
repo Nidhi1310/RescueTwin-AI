@@ -3,13 +3,27 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    environment:
+      # Optional: set to require X-API-Key on every endpoint except /health.
+      RESCUETWIN_API_KEY: ${RESCUETWIN_API_KEY:-}
+      # Optional: a stable key keeps issued decision bundles valid across restarts.
+      RESCUETWIN_SIGNING_KEY: ${RESCUETWIN_SIGNING_KEY:-}
+      # nginx (the only client of this service in the stack) sets X-Forwarded-For.
+      RESCUETWIN_TRUST_PROXY: "1"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"   # loopback only: the trusted-proxy header must not be spoofable from outside
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend:
     build:
       context: ./frontend
     ports:
-      - "5173:80"
+      - "5173:8080"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy

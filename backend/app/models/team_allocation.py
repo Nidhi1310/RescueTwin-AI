@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.reasoning import ReasoningFactor
+from app.models.reasoning import FallbackOption, ReasoningFactor
 
 
 class TeamCandidate(BaseModel):
@@ -40,7 +40,9 @@ class TeamAllocationResponse(BaseModel):
     incident_zone_id: str
     scenario: str
     required_specialty: str | None
+    incident_severity: float | None = None
     selected_team: TeamCandidate | None
     ranked_teams: list[TeamCandidate]
     excluded_teams: list[TeamExclusion]
     explanation: str = Field(min_length=1)
+    fallback: FallbackOption | None = None

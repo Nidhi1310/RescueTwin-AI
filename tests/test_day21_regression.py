@@ -90,17 +90,15 @@ def test_report_generation_preserves_core_incident_details() -> None:
         district=get_district(),
         incident_zone_id="zone-03",
         rainfall_mm=210.0,
-        elevation_m=65.0,
-        drainage_score=3,
         previous_water_level_m=2.0,
-        required_specialty="medical",
+        required_specialty="paramedic",
     )
 
-    response = client.post("/api/v1/generate-report", json=decision.model_dump())
+    response = client.post("/api/v1/generate-report", json=decision.model_dump(mode="json"))
 
     assert response.status_code == 200
     report = response.json()["report_content"]
-    assert report.startswith("RescueTwin AI Incident Report")
+    assert report.startswith("# RescueTwin AI Incident Report")
     assert "zone-03" in report
     assert str(decision.prediction.predicted_flood_severity) in report
     assert decision.prediction.confidence.upper() in report

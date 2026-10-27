@@ -71,7 +71,7 @@ def test_allocate_team_specialization_preference():
 def test_api_team_allocation():
     """Test the /recommendations/team endpoint."""
     with TestClient(app) as client:
-        response = client.get("/api/v1/recommendations/team?incident_zone_id=zone-01&scenario=moderate&required_specialty=water_rescue")
+        response = client.get("/api/v1/recommendations/team?incident_zone_id=zone-01&scenario=moderate&required_specialty=boat_rescue")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] in ("success", "no_suitable_team")

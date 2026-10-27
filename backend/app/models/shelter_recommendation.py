@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.reasoning import ReasoningFactor
+from app.models.reasoning import FallbackOption, ReasoningFactor
 
 
 class ShelterCandidate(BaseModel):
@@ -42,3 +42,4 @@ class ShelterRecommendationResponse(BaseModel):
     ranked_shelters: list[ShelterCandidate]
     excluded_shelters: list[ShelterExclusion]
     explanation: str = Field(min_length=1)
+    fallback: FallbackOption | None = None

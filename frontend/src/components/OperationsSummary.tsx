@@ -1,4 +1,4 @@
-import type { DecisionEngineResponse, DistrictProfile, FloodSimulationResult } from "../types";
+import type { DecisionEngineResponse, DistrictProfile, FallbackOption, FloodSimulationResult } from "../types";
 
 interface OperationsSummaryProps {
   simulation: FloodSimulationResult | null;
@@ -18,6 +18,12 @@ function MetricCard({ label, value, detail, tone }: { label: string; value: stri
       <p className="mt-0.5 truncate text-[10px] text-slate-500">{detail}</p>
     </div>
   );
+}
+
+// Once a decision has run, an empty slot means "none reachable", not "not computed yet".
+function missingDetail(decided: boolean, fallback: FallbackOption | null | undefined, pending: string) {
+  if (!decided) return pending;
+  return fallback ? `none by road · boat/air: ${fallback.target_name}` : "none available";
 }
 
 export function OperationsSummary({ simulation, decision, district }: OperationsSummaryProps) {
@@ -47,9 +53,9 @@ export function OperationsSummary({ simulation, decision, district }: Operations
         <MetricCard label="Flood severity" value={severity === null ? null : `${severity.toFixed(0)}/100`} detail={severityLabel} tone={severityTone} />
         <MetricCard label="Affected zones" value={simulation ? affectedCount : null} detail={simulation ? "zones impacted" : "awaiting simulation"} tone="text-amber-300" />
         <MetricCard label="Blocked roads" value={simulation ? blockedCount : null} detail={simulation ? "routes restricted" : "awaiting simulation"} tone="text-orange-300" />
-        <MetricCard label="Hospital" value={selectedHospital?.hospital_name ?? null} detail={selectedHospital ? `${selectedHospital.available_capacity} beds available` : "no recommendation yet"} tone="text-rose-300" />
-        <MetricCard label="Shelter" value={selectedShelter?.shelter_name ?? null} detail={selectedShelter ? `${selectedShelter.available_capacity} spaces available` : "no recommendation yet"} tone="text-amber-300" />
-        <MetricCard label="Rescue team" value={selectedTeam?.team_name ?? null} detail={selectedTeam ? `${selectedTeam.personnel_count} personnel · ${selectedTeam.estimated_travel_time_minutes} min ETA` : "no assignment yet"} tone="text-emerald-300" />
+        <MetricCard label="Hospital" value={selectedHospital?.hospital_name ?? null} detail={selectedHospital ? `${selectedHospital.available_capacity} beds available` : missingDetail(decision !== null, decision?.hospital_recommendation.fallback, "no recommendation yet")} tone="text-rose-300" />
+        <MetricCard label="Shelter" value={selectedShelter?.shelter_name ?? null} detail={selectedShelter ? `${selectedShelter.available_capacity} spaces available` : missingDetail(decision !== null, decision?.shelter_recommendation.fallback, "no recommendation yet")} tone="text-amber-300" />
+        <MetricCard label="Rescue team" value={selectedTeam?.team_name ?? null} detail={selectedTeam ? `${selectedTeam.personnel_count} personnel · ${selectedTeam.estimated_travel_time_minutes} min ETA` : missingDetail(decision !== null, decision?.team_allocation.fallback, "no assignment yet")} tone="text-emerald-300" />
       </div>
     </section>
   );

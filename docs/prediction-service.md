@@ -1,6 +1,6 @@
 # Flood prediction service
 
-The baseline model is an XGBoost regressor trained on the synthetic flood dataset. Training uses a deterministic 80/20 scikit-learn train/test split with `random_state=42`, and writes the model plus its evaluation metrics to `backend/artifacts/flood_severity_xgb.joblib`.
+The baseline model is an XGBoost regressor trained on the synthetic flood dataset. Training uses a deterministic 80/20 scikit-learn train/test split with `random_state=42`, and writes the model as XGBoost-native JSON to `backend/artifacts/flood_severity_xgb.json`, plus `flood_severity_xgb.meta.json` (feature schema, holdout metrics, training-range bounds and a SHA-256 checksum). No pickle is used, and the service refuses to load an artifact whose checksum does not match.
 
 Train or refresh the artifact:
 

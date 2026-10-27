@@ -1,7 +1,7 @@
 {
   "name": "rescuetwin-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,19 +9,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@types/leaflet": "^1.9.20",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
-    "autoprefixer": "latest",
     "leaflet": "^1.9.4",
-    "postcss": "latest",
-    "react": "latest",
-    "react-dom": "latest",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-leaflet": "^5.0.0",
-    "recharts": "^3.10.1",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.20",
+    "@types/react": "T19.2.8",
+    "@types/react-dom": "T19.2.8",
+    "@vitejs/plugin-react": "6.0.5",
+    "autoprefixer": "10.5.4",
+    "postcss": "8.5.25",
     "tailwindcss": "^3.4.17",
-    "typescript": "latest",
-    "vite": "latest"
+    "typescript": "7.0.2",
+    "vite": "8.2.0"
   }
 }
