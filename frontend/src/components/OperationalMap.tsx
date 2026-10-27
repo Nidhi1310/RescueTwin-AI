@@ -223,6 +223,19 @@ function RouteLine({ route, color, label }: { route?: RouteResponse | null; colo
   );
 }
 
+const CARTO_BASEMAP_KEY = (import.meta.env.VITE_CARTO_API_KEY as string | undefined)?.trim();
+const TILE_LAYER = CARTO_BASEMAP_KEY
+  ? {
+      url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_BASEMAP_KEY)}`,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd",
+    }
+  : {
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains: "abc",
+    };
+
 export function OperationalMap({
   zones,
   hospitals,
@@ -258,9 +271,9 @@ export function OperationalMap({
       <div className="relative">
         <MapContainer center={point(center)} zoom={13} scrollWheelZoom className="h-[680px] w-full tactical-map">
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            subdomains="abcd"
+            attribution={TILE_LAYER.attribution}
+            url={TILE_LAYER.url}
+            subdomains={TILE_LAYER.subdomains}
             maxZoom={20}
           />
           <FitDistrict bounds={bounds} />

@@ -408,7 +408,7 @@ The map displays:
 - selected incidents,
 - zoom/layer/location controls.
 
-The current map uses **CARTO Voyager tiles** with the required CARTO/OpenStreetMap attribution; no API key is required for this public tile endpoint.
+The map uses **CARTO Voyager tiles** when `VITE_CARTO_API_KEY` is configured, with the required CARTO/OpenStreetMap attribution. CARTO requires a key for external Voyager raster use; without one, the frontend deliberately falls back to OpenStreetMap tiles so it never displays CARTO's API-key watermark.
 
 ---
 
@@ -598,6 +598,7 @@ For production, keep the deployment branch and environment variables aligned wit
 | `RESCUETWIN_DATASET_PATH` / `RESCUETWIN_ARTIFACT_PATH` | backend/training | Override data and model locations |
 | `VITE_API_BASE_URL` | frontend build | Backend URL (empty = same-origin `/api`) |
 | `VITE_API_KEY` | frontend build | Optional. A static SPA cannot keep a secret, so this only deters casual use; use a real authenticating gateway for non-demo deployments |
+| `VITE_CARTO_API_KEY` | frontend build | Optional public/restricted CARTO Basemaps key; enables Voyager tiles. Without it, the map uses OpenStreetMap tiles. |
 
 ---
 
@@ -641,7 +642,7 @@ Check:
 
 ### Map does not load
 
-The current map uses CARTO Voyager tiles. Rebuild the frontend and check browser network errors if tiles are unavailable.
+The map uses CARTO Voyager only when `VITE_CARTO_API_KEY` is present at build time. CARTO Basemaps keys are public browser credentials and should be restricted to the deployed frontend origin; do not put a private secret in a Vite variable. Without a key, the frontend uses OpenStreetMap tiles with OSM-only attribution.
 
 ---
 
