@@ -35,10 +35,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid #22c7ff; outline-offs
   font-family: inherit;
 }
 
-.leaflet-tile {
-  /* Keyless OSM tiles, visually tuned to the navy command-center palette. */
-  filter: brightness(.42) contrast(1.12) saturate(.72) hue-rotate(178deg);
-}
 
 .leaflet-control-attribution {
   background: rgba(4, 12, 21, .82) !important;
@@ -154,13 +150,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid #22c7ff; outline-offs
 .shadow-panel { box-shadow: 0 18px 50px rgba(0,0,0,.24); }
 
 
-/* Tactical keyless map presentation */
+/* Preserve natural street-map colours while keeping the tactical controls. */
 .tactical-map {
   background: #071827;
-}
-
-.tactical-map .leaflet-tile {
-  filter: brightness(.48) saturate(.82) contrast(1.15) hue-rotate(175deg);
 }
 
 .tactical-map .leaflet-overlay-pane,

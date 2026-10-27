@@ -23,4 +23,6 @@ POST /api/v1/predict
 }
 ```
 
-The response includes the 0–100 predicted severity and a confidence band based on the persisted model's held-out R² score. This is a demo baseline trained solely on fictional synthetic data.
+The response includes the 0–100 predicted severity and a heuristic confidence category based on the persisted model's held-out R² score. This is not a calibrated confidence or prediction interval. The demo baseline is trained solely on fictional synthetic data, and its random holdout metrics are not leakage-resistant or real-world validation.
+
+Use `GET /api/v1/ready` to check whether the artifact is present and loadable. If it is missing, run `python ai/train_flood_model.py`; prediction and decision-engine requests return HTTP 503 with a remediation message until the artifact is available.

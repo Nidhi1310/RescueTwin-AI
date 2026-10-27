@@ -16,7 +16,13 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBRegressor
 
 from app.models.prediction import FloodPredictionRequest, FloodPredictionResponse
-from app.services.synthetic_data import CSV_COLUMNS, FEATURE_COLUMNS, FloodTrainingRecord, validate_training_records
+from app.services.synthetic_data import (
+    CSV_COLUMNS,
+    FEATURE_COLUMNS,
+    FloodTrainingRecord,
+    create_training_dataset,
+    validate_training_records,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # Paths default to the repository layout and can be overridden (e.g. in Docker).
@@ -26,6 +32,10 @@ DEFAULT_ARTIFACT_PATH = Path(
 )
 _EDGE_MARGIN = 0.05  # inputs within 5% of a training-range edge are treated as low-support
 _TRAIN_TEST_SPLIT_SEED = 42
+
+
+class ModelArtifactError(ValueError):
+    """Raised when a persisted model exists but cannot be safely loaded."""
 
 
 @dataclass(frozen=True)
@@ -137,22 +147,41 @@ def train_baseline_model(dataset_path: Path = DEFAULT_DATASET_PATH, artifact_pat
     )
 
 
+def bootstrap_model(
+    dataset_path: Path = DEFAULT_DATASET_PATH,
+    artifact_path: Path = DEFAULT_ARTIFACT_PATH,
+) -> TrainingResult:
+    """Generate missing training data and build a reproducible model artifact."""
+
+    if not dataset_path.exists():
+        create_training_dataset(dataset_path)
+    return train_baseline_model(dataset_path, artifact_path)
+
+
 class FloodPredictionService:
     """A loaded model artifact that serves deterministic single-record predictions."""
 
-    def __init__(self, artifact_path: Path = DEFAULT_ARTIFACT_PATH) -> None:
+    def __init__(self, artifact_path: Path | None = None) -> None:
+        artifact_path = artifact_path or DEFAULT_ARTIFACT_PATH
         meta_path = _meta_path(artifact_path)
         if not artifact_path.exists() or not meta_path.exists():
             raise FileNotFoundError(
                 f"Model artifact not found at {artifact_path}. Run `python ai/train_flood_model.py` first."
             )
-        metadata: dict[str, Any] = json.loads(meta_path.read_text(encoding="utf-8"))
-        if tuple(metadata.get("feature_columns", ())) != FEATURE_COLUMNS:
-            raise ValueError("Model artifact feature schema does not match the prediction service.")
-        if metadata.get("model_sha256") != _sha256(artifact_path):
-            raise ValueError("Model artifact failed its integrity check (checksum mismatch); refusing to load.")
-        model = XGBRegressor()
-        model.load_model(artifact_path)
+        try:
+            metadata: dict[str, Any] = json.loads(meta_path.read_text(encoding="utf-8"))
+            if tuple(metadata.get("feature_columns", ())) != FEATURE_COLUMNS:
+                raise ModelArtifactError("Model artifact feature schema does not match the prediction service.")
+            if metadata.get("model_sha256") != _sha256(artifact_path):
+                raise ModelArtifactError("Model artifact failed its integrity check (checksum mismatch); refusing to load.")
+            model = XGBRegressor()
+            model.load_model(artifact_path)
+        except FileNotFoundError:
+            raise
+        except ModelArtifactError:
+            raise
+        except Exception as exc:
+            raise ModelArtifactError(f"Could not load model artifact at {artifact_path}: {exc}") from exc
         self._model: XGBRegressor = model
         self._metrics: dict[str, float] = metadata["metrics"]
         self._ranges: dict[str, tuple[float, float]] = {
@@ -228,3 +257,16 @@ def get_prediction_service() -> FloodPredictionService:
     if _prediction_service is None:
         _prediction_service = FloodPredictionService()
     return _prediction_service
+
+
+def check_model_readiness(artifact_path: Path | None = None) -> tuple[bool, str]:
+    """Validate that the persisted model exists and can be loaded."""
+
+    resolved_artifact_path = artifact_path or DEFAULT_ARTIFACT_PATH
+    try:
+        FloodPredictionService(resolved_artifact_path)
+    except FileNotFoundError:
+        return False, f"Model artifact is missing at {resolved_artifact_path}. Run 'python ai/train_flood_model.py'."
+    except (ModelArtifactError, OSError, ValueError, KeyError, TypeError) as exc:
+        return False, f"Model artifact is invalid or unreadable: {exc}"
+    return True, "Model artifact loaded successfully."

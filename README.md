@@ -338,11 +338,12 @@ The report service converts the decision-engine response into a readable inciden
 
 ## API Reference
 
-All operational endpoints are under `/api/v1`. When `RESCUETWIN_API_KEY` is set, every endpoint except `/health` requires an `X-API-Key` header.
+All operational endpoints are under `/api/v1`. When `RESCUETWIN_API_KEY` is set, every endpoint except `/health` and `/ready` requires an `X-API-Key` header.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/health` | Service health check (always public) |
+| GET | `/ready` | Model-artifact readiness check (always public; returns `503` when unavailable) |
 | GET | `/district` | Fictional district metadata |
 | GET | `/scenarios` | Preset inputs used when only a scenario is selected |
 | GET | `/simulate` | Run a rainfall scenario |
@@ -407,7 +408,7 @@ The map displays:
 - selected incidents,
 - zoom/layer/location controls.
 
-The current map uses **keyless OpenStreetMap tiles**, so the frontend does not require a CARTO API key.
+The current map uses **CARTO Voyager tiles** with the required CARTO/OpenStreetMap attribution; no API key is required for this public tile endpoint.
 
 ---
 
@@ -640,7 +641,7 @@ Check:
 
 ### Map does not load
 
-The current map uses OpenStreetMap tiles and does not require a CARTO API key. Rebuild the frontend and check browser network errors if tiles are unavailable.
+The current map uses CARTO Voyager tiles. Rebuild the frontend and check browser network errors if tiles are unavailable.
 
 ---
 
@@ -722,7 +723,7 @@ Potential extensions include:
 - ✅ Moderate / Severe / Extreme scenarios
 - ✅ XGBoost flood-severity prediction
 - ✅ Interactive tactical flood map
-- ✅ Keyless OpenStreetMap map tiles
+- ✅ CARTO Voyager map tiles with attribution
 - ✅ Flood-affected zone visualization
 - ✅ Blocked-road detection
 - ✅ Dijkstra-based safe routing
@@ -772,7 +773,7 @@ This end-to-end workflow is the core of **RescueTwin AI**.
 
 ## Author
 
-**Nidhi Kumari**  
+**Nidhi Kumari**
 B.Tech — Electronics and Communication Engineering
 
 RescueTwin AI demonstrates applied AI/ML, backend engineering, frontend engineering, algorithms, geospatial visualization, testing, and deployment in a single portfolio project.

@@ -29,6 +29,9 @@ jobs:
       - name: Verify the documented training command works from a clean checkout
         run: python ai/train_flood_model.py --artifact "$RUNNER_TEMP/model.json"
 
+      - name: Bootstrap model artifact
+        run: python ai/train_flood_model.py
+
       - name: Run backend tests
         env:
           PYTHONPATH: backend
